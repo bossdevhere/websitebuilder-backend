@@ -1,19 +1,37 @@
-import { supabase } from "../../config/supabase.js";
+import { supabase, supabaseAdmin } from "../../config/supabase.js";
 
 export class AuthService {
   static async signup(email: string, password: string, name?: string) {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-      },
-    });
+    try {
+      // Create user via admin API to auto-confirm email for seamless dev experience
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name },
+      });
 
-    if (error) {
-      throw new Error(error.message);
+      if (error) {
+        // Fallback to standard signUp
+        const fallback = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { name } },
+        });
+        if (fallback.error) throw new Error(fallback.error.message);
+        return fallback.data;
+      }
+      return data;
+    } catch (err: any) {
+      // Standard signup fallback if admin API fails
+      const fallback = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name } },
+      });
+      if (fallback.error) throw new Error(fallback.error.message);
+      return fallback.data;
     }
-    return data;
   }
 
   static async login(email: string, password: string) {
@@ -29,9 +47,9 @@ export class AuthService {
   }
 
   static async logout(accessToken: string) {
-    const { error } = await supabase.auth.admin.signOut(accessToken);
-    if (error) {
-      // Fallback signout
+    try {
+      await supabase.auth.admin.signOut(accessToken);
+    } catch (err) {
       await supabase.auth.signOut();
     }
     return { success: true };
