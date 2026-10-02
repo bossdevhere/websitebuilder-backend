@@ -2,36 +2,41 @@ import { supabase, supabaseAdmin } from "../../config/supabase.js";
 
 export class AuthService {
   static async signup(email: string, password: string, name?: string) {
-    try {
-      // Create user via admin API to auto-confirm email for seamless dev experience
-      const { data, error } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { name },
-      });
+    // 1. Create user with auto-confirmed email using admin client
+    const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name: name || email.split("@")[0] },
+    });
 
-      if (error) {
-        // Fallback to standard signUp
-        const fallback = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { name } },
-        });
-        if (fallback.error) throw new Error(fallback.error.message);
-        return fallback.data;
-      }
-      return data;
-    } catch (err: any) {
-      // Standard signup fallback if admin API fails
-      const fallback = await supabase.auth.signUp({
+    if (createError) {
+      // Fallback if admin API fails or user already exists
+      const { data: fallbackData, error: fallbackError } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { name } },
       });
-      if (fallback.error) throw new Error(fallback.error.message);
-      return fallback.data;
+      if (fallbackError) throw new Error(fallbackError.message);
+
+      // Attempt instant login
+      const loginAttempt = await supabase.auth.signInWithPassword({ email, password });
+      return {
+        user: fallbackData.user,
+        session: loginAttempt.data?.session || fallbackData.session,
+      };
     }
+
+    // 2. Direct login to generate active session for immediate frontend access
+    const { data: sessionData } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    return {
+      user: createData.user,
+      session: sessionData?.session || null,
+    };
   }
 
   static async login(email: string, password: string) {
