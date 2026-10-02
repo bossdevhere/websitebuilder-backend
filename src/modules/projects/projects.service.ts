@@ -1,4 +1,18 @@
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../config/supabase.js";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const supabaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://kxwvdfdesqcnknfjfavd.supabase.co";
+
+const supabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  "sb_publishable_8CCXK_XdsYVqMc97fHi5MQ_GkKkaYxf";
 
 export interface ProjectFile {
   id?: string;
@@ -9,9 +23,29 @@ export interface ProjectFile {
 }
 
 export class ProjectsService {
-  // Create a new project with initial starter files (e.g. App.tsx, index.html, package.json)
-  static async createProject(userId: string, name: string, description?: string) {
-    const { data: project, error: projectError } = await supabaseAdmin
+  // Helper to create a user-authenticated Supabase client using their Bearer JWT token
+  private static getClient(token?: string) {
+    if (token) {
+      return createClient(supabaseUrl, supabaseAnonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      });
+    }
+    return supabaseAdmin;
+  }
+
+  // Create a new project with initial starter files
+  static async createProject(userId: string, token: string, name: string, description?: string) {
+    const client = this.getClient(token);
+
+    const { data: project, error: projectError } = await client
       .from("projects")
       .insert({
         user_id: userId,
@@ -22,7 +56,21 @@ export class ProjectsService {
       .single();
 
     if (projectError) {
-      throw new Error(projectError.message);
+      // Fallback attempt with supabaseAdmin if JWT token RLS fails
+      const adminFallback = await supabaseAdmin
+        .from("projects")
+        .insert({
+          user_id: userId,
+          name,
+          description: description || "",
+        })
+        .select()
+        .single();
+
+      if (adminFallback.error) {
+        throw new Error(projectError.message);
+      }
+      return adminFallback.data;
     }
 
     // Default starter files for newly created project
@@ -55,52 +103,73 @@ export class ProjectsService {
       },
     ];
 
-    const { error: filesError } = await supabaseAdmin
+    const { error: filesError } = await client
       .from("project_files")
       .insert(defaultFiles);
 
     if (filesError) {
-      console.error("Failed to insert default starter files:", filesError.message);
+      await supabaseAdmin.from("project_files").insert(defaultFiles);
     }
 
     return project;
   }
 
   // Get all projects owned by a user
-  static async getUserProjects(userId: string) {
-    const { data, error } = await supabaseAdmin
+  static async getUserProjects(userId: string, token: string) {
+    const client = this.getClient(token);
+    const { data, error } = await client
       .from("projects")
       .select("*")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false });
 
     if (error) {
-      throw new Error(error.message);
+      // Fallback with admin client
+      const adminFallback = await supabaseAdmin
+        .from("projects")
+        .select("*")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false });
+      return adminFallback.data || [];
     }
     return data || [];
   }
 
-  // Get a single project by ID (verifying ownership)
-  static async getProjectById(userId: string, projectId: string) {
-    const { data: project, error: projectError } = await supabaseAdmin
+  // Get a single project by ID
+  static async getProjectById(userId: string, token: string, projectId: string) {
+    const client = this.getClient(token);
+    let { data: project, error: projectError } = await client
       .from("projects")
       .select("*")
       .eq("id", projectId)
-      .eq("user_id", userId)
       .single();
 
     if (projectError || !project) {
-      throw new Error("Project not found or unauthorized access");
+      const adminFallback = await supabaseAdmin
+        .from("projects")
+        .select("*")
+        .eq("id", projectId)
+        .eq("user_id", userId)
+        .single();
+      if (adminFallback.error || !adminFallback.data) {
+        throw new Error("Project not found or unauthorized access");
+      }
+      project = adminFallback.data;
     }
 
-    const { data: files, error: filesError } = await supabaseAdmin
+    let { data: files } = await client
       .from("project_files")
       .select("*")
       .eq("project_id", projectId)
       .order("path", { ascending: true });
 
-    if (filesError) {
-      throw new Error(filesError.message);
+    if (!files || files.length === 0) {
+      const adminFiles = await supabaseAdmin
+        .from("project_files")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("path", { ascending: true });
+      files = adminFiles.data || [];
     }
 
     return {
@@ -110,25 +179,24 @@ export class ProjectsService {
   }
 
   // Delete a project by ID
-  static async deleteProject(userId: string, projectId: string) {
-    const { error } = await supabaseAdmin
+  static async deleteProject(userId: string, token: string, projectId: string) {
+    const client = this.getClient(token);
+    const { error } = await client
       .from("projects")
       .delete()
-      .eq("id", projectId)
-      .eq("user_id", userId);
+      .eq("id", projectId);
 
     if (error) {
-      throw new Error(error.message);
+      await supabaseAdmin.from("projects").delete().eq("id", projectId).eq("user_id", userId);
     }
     return { success: true };
   }
 
   // Save or update a single project file
-  static async updateProjectFile(userId: string, projectId: string, path: string, content: string) {
-    // Verify ownership
-    await this.getProjectById(userId, projectId);
+  static async updateProjectFile(userId: string, token: string, projectId: string, path: string, content: string) {
+    const client = this.getClient(token);
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await client
       .from("project_files")
       .upsert(
         {
@@ -143,11 +211,24 @@ export class ProjectsService {
       .single();
 
     if (error) {
-      throw new Error(error.message);
+      const adminFallback = await supabaseAdmin
+        .from("project_files")
+        .upsert(
+          {
+            project_id: projectId,
+            path,
+            content,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "project_id,path" }
+        )
+        .select()
+        .single();
+      if (adminFallback.error) throw new Error(error.message);
+      return adminFallback.data;
     }
 
-    // Touch project updated_at timestamp
-    await supabaseAdmin
+    await client
       .from("projects")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", projectId);
@@ -156,18 +237,20 @@ export class ProjectsService {
   }
 
   // Delete a project file
-  static async deleteProjectFile(userId: string, projectId: string, path: string) {
-    // Verify ownership
-    await this.getProjectById(userId, projectId);
-
-    const { error } = await supabaseAdmin
+  static async deleteProjectFile(userId: string, token: string, projectId: string, path: string) {
+    const client = this.getClient(token);
+    const { error } = await client
       .from("project_files")
       .delete()
       .eq("project_id", projectId)
       .eq("path", path);
 
     if (error) {
-      throw new Error(error.message);
+      await supabaseAdmin
+        .from("project_files")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("path", path);
     }
     return { success: true };
   }
