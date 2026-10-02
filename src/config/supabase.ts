@@ -1,19 +1,33 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || "https://placeholder.supabase.co";
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "placeholder-anon-key";
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-service-key";
+const supabaseUrl =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://kxwvdfdesqcnknfjfavd.supabase.co";
 
-// Client for public / user-level authentication operations
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  "sb_publishable_8CCXK_XdsYVqMc97fHi5MQ_GkKkaYxf";
 
-// Admin client with service_role key for backend administrative operations
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+const supabaseAnonKey =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  supabaseKey;
+
+// Primary Supabase client for backend operations
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
+// Admin client with service role options if available
+export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
 });
+
+export default supabase;

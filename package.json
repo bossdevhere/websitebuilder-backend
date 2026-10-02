@@ -9,7 +9,7 @@
     "start": "npm run build && node dist/server.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.48.1",
+    "@supabase/supabase-js": "^2.117.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
