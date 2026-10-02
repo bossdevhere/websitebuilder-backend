@@ -1,4 +1,4 @@
-import { supabase } from "../../config/supabase.js";
+import { supabaseAdmin } from "../../config/supabase.js";
 
 export interface ProjectFile {
   id?: string;
@@ -11,7 +11,7 @@ export interface ProjectFile {
 export class ProjectsService {
   // Create a new project with initial starter files (e.g. App.tsx, index.html, package.json)
   static async createProject(userId: string, name: string, description?: string) {
-    const { data: project, error: projectError } = await supabase
+    const { data: project, error: projectError } = await supabaseAdmin
       .from("projects")
       .insert({
         user_id: userId,
@@ -55,7 +55,7 @@ export class ProjectsService {
       },
     ];
 
-    const { error: filesError } = await supabase
+    const { error: filesError } = await supabaseAdmin
       .from("project_files")
       .insert(defaultFiles);
 
@@ -68,7 +68,7 @@ export class ProjectsService {
 
   // Get all projects owned by a user
   static async getUserProjects(userId: string) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("projects")
       .select("*")
       .eq("user_id", userId)
@@ -82,7 +82,7 @@ export class ProjectsService {
 
   // Get a single project by ID (verifying ownership)
   static async getProjectById(userId: string, projectId: string) {
-    const { data: project, error: projectError } = await supabase
+    const { data: project, error: projectError } = await supabaseAdmin
       .from("projects")
       .select("*")
       .eq("id", projectId)
@@ -93,7 +93,7 @@ export class ProjectsService {
       throw new Error("Project not found or unauthorized access");
     }
 
-    const { data: files, error: filesError } = await supabase
+    const { data: files, error: filesError } = await supabaseAdmin
       .from("project_files")
       .select("*")
       .eq("project_id", projectId)
@@ -111,7 +111,7 @@ export class ProjectsService {
 
   // Delete a project by ID
   static async deleteProject(userId: string, projectId: string) {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("projects")
       .delete()
       .eq("id", projectId)
@@ -128,7 +128,7 @@ export class ProjectsService {
     // Verify ownership
     await this.getProjectById(userId, projectId);
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("project_files")
       .upsert(
         {
@@ -147,7 +147,7 @@ export class ProjectsService {
     }
 
     // Touch project updated_at timestamp
-    await supabase
+    await supabaseAdmin
       .from("projects")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", projectId);
@@ -160,7 +160,7 @@ export class ProjectsService {
     // Verify ownership
     await this.getProjectById(userId, projectId);
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("project_files")
       .delete()
       .eq("project_id", projectId)
