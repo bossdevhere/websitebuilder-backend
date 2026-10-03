@@ -11,13 +11,19 @@ export async function authenticateToken(
   next: NextFunction
 ): Promise<void> {
   try {
+    let token: string | undefined;
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Missing or invalid authorization header" });
-      return;
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else if (req.query.token && typeof req.query.token === "string") {
+      token = req.query.token;
     }
 
-    const token = authHeader.split(" ")[1];
+    if (!token) {
+      res.status(401).json({ error: "Missing or invalid authorization token" });
+      return;
+    }
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {

@@ -194,6 +194,9 @@ export class ProjectsService {
 
   // Save or update a single project file
   static async updateProjectFile(userId: string, token: string, projectId: string, path: string, content: string) {
+    if (!path || path.includes("..")) {
+      throw new Error("Invalid file path: path traversal detected");
+    }
     const client = this.getClient(token);
 
     const { data, error } = await client
@@ -238,6 +241,9 @@ export class ProjectsService {
 
   // Delete a project file
   static async deleteProjectFile(userId: string, token: string, projectId: string, path: string) {
+    if (!path || path.includes("..")) {
+      throw new Error("Invalid file path: path traversal detected");
+    }
     const client = this.getClient(token);
     const { error } = await client
       .from("project_files")

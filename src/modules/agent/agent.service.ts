@@ -52,16 +52,19 @@ export class AgentService {
 
     // 3. Execute LangGraph Workflow
     try {
-      const result = await agentGraph.invoke({
-        projectId,
-        userPrompt,
-        fileTree,
-        plan: [],
-        logs: [],
-        fileChanges: [],
-        errorCount: 0,
-        status: "planning",
-      });
+      const result = await agentGraph.invoke(
+        {
+          projectId,
+          userPrompt,
+          fileTree,
+          plan: [],
+          logs: [],
+          fileChanges: [],
+          errorCount: 0,
+          status: "planning",
+        },
+        { recursionLimit: 15 }
+      );
 
       // 4. Save generated file changes to DB
       const fileChanges = result.fileChanges || [];
