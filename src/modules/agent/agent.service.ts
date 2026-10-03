@@ -74,7 +74,11 @@ export class AgentService {
       }
 
       // 5. Save assistant message to chat history
-      const summary = `Generated and updated ${fileChanges.length} file(s) for prompt: "${userPrompt}"`;
+      const summary =
+        fileChanges.length > 0
+          ? `Generated and updated ${fileChanges.length} file(s) for prompt: "${userPrompt}"`
+          : (result.logs && result.logs[0]) || `Processed prompt: "${userPrompt}"`;
+
       await supabaseAdmin.from("chat_messages").insert({
         project_id: projectId,
         role: "assistant",
