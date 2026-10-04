@@ -29,7 +29,7 @@ async function plannerNode(state: AgentStateType) {
   if (isSimpleGreeting(state.userPrompt)) {
     return {
       plan: [],
-      logs: ["👋 Hello! I am your AI Web App Builder. What feature or component would you like me to create?"],
+      logs: ["👋 Hello! I am your AI Web App Assistant. Ask me to build components, add pages, or style your web application!"],
       fileChanges: [],
       status: "done",
     };
@@ -64,6 +64,20 @@ If no code files need to be changed, return an empty array: []`;
     logs: [`📋 Plan generated (${planSteps.length} steps)`],
     status: planSteps.length > 0 ? "generating" : "done",
   };
+}
+
+// Helper to check if string contains actual source code
+function isCodeContent(str: string): boolean {
+  if (!str || typeof str !== "string") return false;
+  const t = str.trim();
+  return (
+    t.includes("import ") ||
+    t.includes("export ") ||
+    t.includes("function ") ||
+    t.includes("const ") ||
+    t.includes("<") ||
+    t.includes("{")
+  );
 }
 
 // 2. Code Generator Node: Writes complete file code using active LLM engine
@@ -106,6 +120,7 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
   const rawText = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
   const fileChanges: { path: string; content: string }[] = [];
   const updatedTree: Record<string, string> = { ...state.fileTree };
+  let assistantReplyText = "";
 
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
@@ -113,28 +128,32 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
     const parsedFiles: Record<string, string> = JSON.parse(jsonStr);
 
     for (const [path, content] of Object.entries(parsedFiles)) {
-      if (typeof content === "string") {
+      if (typeof content === "string" && isCodeContent(content)) {
         fileChanges.push({ path, content });
         updatedTree[path] = content;
       }
     }
   } catch (e) {
-    // Fallback if JSON parsing fails: update App.tsx directly
-    let fallbackContent = rawText
-      .replace(/```tsx/g, "")
-      .replace(/```jsx/g, "")
-      .replace(/```typescript/g, "")
-      .replace(/```/g, "")
-      .trim();
-
-    fileChanges.push({ path: "App.tsx", content: fallbackContent });
-    updatedTree["App.tsx"] = fallbackContent;
+    // If JSON parsing fails, extract fenced code block ONLY if valid code
+    const codeBlockMatch = rawText.match(/```(?:tsx|jsx|typescript|javascript|html|css)?\n([\s\S]*?)```/);
+    if (codeBlockMatch && isCodeContent(codeBlockMatch[1])) {
+      const code = codeBlockMatch[1].trim();
+      fileChanges.push({ path: "App.tsx", content: code });
+      updatedTree["App.tsx"] = code;
+    } else {
+      // Conversational text - do NOT touch project files!
+      assistantReplyText = rawText.replace(/```[\s\S]*?```/g, "").trim();
+    }
   }
+
+  const logs = fileChanges.length > 0
+    ? fileChanges.map((f) => `✏️ Generated code for ${f.path}`)
+    : [assistantReplyText || "Processed request."];
 
   return {
     fileChanges,
     fileTree: updatedTree,
-    logs: fileChanges.map((f) => `✏️ Generated code for ${f.path}`),
+    logs,
     status: "verifying",
   };
 }
@@ -143,7 +162,7 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
 async function verifierNode(state: AgentStateType) {
   const fileCount = state.fileChanges?.length || 0;
   return {
-    logs: [fileCount > 0 ? `✅ Verification complete (${fileCount} files updated)` : "✅ Done"],
+    logs: state.logs || [fileCount > 0 ? `✅ Verification complete (${fileCount} files updated)` : "✅ Done"],
     status: "done",
   };
 }
