@@ -3,6 +3,8 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import projectsRoutes from "./modules/projects/projects.routes.js";
 import llmRoutes from "./modules/llm/llm.routes.js";
 import agentRoutes from "./modules/agent/agent.routes.js";
+import conversationsRoutes from "./modules/conversations/conversations.routes.js";
+import runtimeRoutes from "./modules/runtime/runtime.routes.js";
 import { supabase } from "./config/supabase.js";
 
 const apiRouter = Router();
@@ -42,6 +44,8 @@ apiRouter.get("/supabase-test", async (req, res) => {
 // Module routes
 apiRouter.use("/auth", authRoutes);
 apiRouter.use("/projects", projectsRoutes);
+apiRouter.use("/projects/:projectId/conversations", conversationsRoutes);
+apiRouter.use("/runtime/projects/:projectId", runtimeRoutes);
 apiRouter.use("/llm", llmRoutes);
 apiRouter.use("/agent/projects", agentRoutes);
 

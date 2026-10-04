@@ -1,6 +1,8 @@
 import { Response } from "express";
 import { agentGraph } from "./agent.graph.js";
 import { ProjectsService } from "../projects/projects.service.js";
+import { ConversationsService } from "../conversations/conversations.service.js";
+import { RuntimeManager } from "../runtime/runtime.manager.js";
 import { supabaseAdmin } from "../../config/supabase.js";
 
 interface SSEClient {
@@ -32,8 +34,14 @@ export class AgentService {
     });
   }
 
-  // Execute Agent Workflow for a user prompt
-  static async runAgent(userId: string, token: string, projectId: string, userPrompt: string) {
+  // Execute Agent Workflow for a user prompt within a conversation
+  static async runAgent(
+    userId: string,
+    token: string,
+    projectId: string,
+    userPrompt: string,
+    conversationId?: string
+  ) {
     // 1. Fetch current project & file tree
     const project = await ProjectsService.getProjectById(userId, token, projectId);
     const fileTree: Record<string, string> = {};
@@ -41,12 +49,16 @@ export class AgentService {
       fileTree[f.path] = f.content;
     });
 
-    // 2. Save user message to chat history
-    await supabaseAdmin.from("chat_messages").insert({
-      project_id: projectId,
-      role: "user",
-      content: userPrompt,
-    });
+    // 2. Persist user message in DB
+    if (conversationId) {
+      await ConversationsService.addMessage(conversationId, "user", userPrompt);
+    } else {
+      await supabaseAdmin.from("chat_messages").insert({
+        project_id: projectId,
+        role: "user",
+        content: userPrompt,
+      });
+    }
 
     this.broadcast(projectId, "status", { status: "planning", message: "🤔 AI Agent is planning project architecture..." });
 
@@ -66,24 +78,35 @@ export class AgentService {
         { recursionLimit: 15 }
       );
 
-      // 4. Save generated file changes to DB
+      // 4. Save generated file changes to DB & sync RuntimeManager workspace
       const fileChanges = result.fileChanges || [];
       for (const change of fileChanges) {
         await ProjectsService.updateProjectFile(userId, token, projectId, change.path, change.content);
         this.broadcast(projectId, "file_updated", { path: change.path, content: change.content });
       }
 
-      // 5. Save assistant message to chat history
+      // Sync physical workspace on disk via RuntimeManager
+      if (fileChanges.length > 0) {
+        const updatedProj = await ProjectsService.getProjectById(userId, token, projectId);
+        await RuntimeManager.syncWorkspace(projectId, updatedProj.files || []);
+      }
+
+      // 5. Persist assistant message in DB
       const assistantText =
         fileChanges.length > 0
           ? `I have updated your application code based on your request:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`
           : (result.logs && result.logs[0]) || `Processed request: "${userPrompt}"`;
 
-      await supabaseAdmin.from("chat_messages").insert({
-        project_id: projectId,
-        role: "assistant",
-        content: assistantText,
-      });
+      let savedMsg = null;
+      if (conversationId) {
+        savedMsg = await ConversationsService.addMessage(conversationId, "assistant", assistantText);
+      } else {
+        await supabaseAdmin.from("chat_messages").insert({
+          project_id: projectId,
+          role: "assistant",
+          content: assistantText,
+        });
+      }
 
       this.broadcast(projectId, "status", {
         status: "done",
@@ -93,7 +116,12 @@ export class AgentService {
         fileChanges,
       });
 
-      return result;
+      return {
+        message: savedMsg || { role: "assistant", content: assistantText },
+        changes: fileChanges,
+        status: "completed",
+        previewUrl: RuntimeManager.getPreviewUrl(projectId),
+      };
     } catch (err: any) {
       console.error("[AGENT ERROR]", err);
       this.broadcast(projectId, "status", {
