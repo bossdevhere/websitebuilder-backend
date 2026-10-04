@@ -50,9 +50,16 @@ export class AgentService {
     });
 
     // 2. Persist user message in DB
+    let userMsg: any = null;
     if (conversationId) {
-      await ConversationsService.addMessage(conversationId, "user", userPrompt, projectId);
+      userMsg = await ConversationsService.addMessage(conversationId, "user", userPrompt, projectId);
     } else {
+      userMsg = {
+        id: `user-${Date.now()}`,
+        role: "user",
+        content: userPrompt,
+        created_at: new Date().toISOString(),
+      };
       await supabaseAdmin.from("chat_messages").insert({
         project_id: projectId,
         role: "user",
@@ -101,6 +108,12 @@ export class AgentService {
       if (conversationId) {
         savedMsg = await ConversationsService.addMessage(conversationId, "assistant", assistantText, projectId);
       } else {
+        savedMsg = {
+          id: `asst-${Date.now()}`,
+          role: "assistant",
+          content: assistantText,
+          created_at: new Date().toISOString(),
+        };
         await supabaseAdmin.from("chat_messages").insert({
           project_id: projectId,
           role: "assistant",
@@ -117,7 +130,8 @@ export class AgentService {
       });
 
       return {
-        message: savedMsg || { role: "assistant", content: assistantText },
+        userMessage: userMsg,
+        message: savedMsg,
         changes: fileChanges,
         status: "completed",
         previewUrl: RuntimeManager.getPreviewUrl(projectId),
