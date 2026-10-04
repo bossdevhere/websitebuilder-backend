@@ -53,23 +53,24 @@ export class ConversationsService {
         .eq("project_id", projectId)
         .order("updated_at", { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        const adminFallback = await supabaseAdmin
-          .from("conversations")
-          .select("*")
-          .eq("project_id", projectId)
-          .order("updated_at", { ascending: false });
-        data = adminFallback.data || [];
-      }
-
-      if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         return data;
       }
+
+      const adminFallback = await supabaseAdmin
+        .from("conversations")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("updated_at", { ascending: false });
+
+      if (adminFallback.data && adminFallback.data.length > 0) {
+        return adminFallback.data;
+      }
     } catch (err) {
-      console.warn("Conversations table query failed, falling back to default thread:", err);
+      console.warn("Conversations query error, using fallback thread:", err);
     }
 
-    // Default Fallback Thread if table does not exist
+    // Default Fallback Thread
     return [
       {
         id: projectId,
@@ -92,7 +93,7 @@ export class ConversationsService {
     const client = this.getClient(token);
 
     try {
-      const { data, error } = await client
+      const { data } = await client
         .from("conversations")
         .insert({ project_id: projectId, user_id: userId, title })
         .select()
@@ -108,11 +109,11 @@ export class ConversationsService {
 
       if (adminFallback.data) return adminFallback.data;
     } catch (e) {
-      console.warn("Could not insert into conversations table, returning fallback conversation:", e);
+      console.warn("Conversations insert error, using fallback conversation object:", e);
     }
 
     return {
-      id: `${projectId}-${Date.now()}`,
+      id: projectId,
       project_id: projectId,
       user_id: userId,
       title,
@@ -122,9 +123,16 @@ export class ConversationsService {
   }
 
   // Get messages for a specific conversation with chat_messages fallback
-  static async getConversationMessages(userId: string, token: string, conversationId: string): Promise<DBMessage[]> {
+  static async getConversationMessages(
+    userId: string,
+    token: string,
+    conversationId: string,
+    projectId?: string
+  ): Promise<DBMessage[]> {
     const client = this.getClient(token);
+    const targetProject = projectId || conversationId;
 
+    // 1. Try querying messages table by conversation_id
     try {
       let { data, error } = await client
         .from("messages")
@@ -137,12 +145,12 @@ export class ConversationsService {
       }
     } catch (e) {}
 
-    // Fallback: Query chat_messages table (which exists in Supabase DB)
+    // 2. Fallback: Query chat_messages table by project_id
     try {
       const { data: chatMsgs } = await supabaseAdmin
         .from("chat_messages")
         .select("*")
-        .eq("project_id", conversationId)
+        .eq("project_id", targetProject)
         .order("created_at", { ascending: true });
 
       if (chatMsgs && chatMsgs.length > 0) {
@@ -166,8 +174,9 @@ export class ConversationsService {
     content: string,
     projectId?: string
   ): Promise<DBMessage> {
-    const targetProject = projectId || conversationId.split("-")[0] || conversationId;
+    const targetProject = projectId || conversationId;
 
+    // 1. Save to messages table if present
     try {
       const { data, error } = await supabaseAdmin
         .from("messages")
@@ -180,12 +189,11 @@ export class ConversationsService {
           .from("conversations")
           .update({ updated_at: new Date().toISOString() })
           .eq("id", conversationId);
-
-        return data;
       }
     } catch (e) {}
 
-    // Fallback: Insert into chat_messages table
+    // 2. Always sync to chat_messages table as reliable fallback
+    let fallbackResult: DBMessage | null = null;
     try {
       const { data: legacyMsg } = await supabaseAdmin
         .from("chat_messages")
@@ -198,7 +206,7 @@ export class ConversationsService {
         .single();
 
       if (legacyMsg) {
-        return {
+        fallbackResult = {
           id: legacyMsg.id,
           conversation_id: conversationId,
           role: legacyMsg.role as any,
@@ -208,12 +216,14 @@ export class ConversationsService {
       }
     } catch (e) {}
 
-    return {
-      id: `msg-${Date.now()}`,
-      conversation_id: conversationId,
-      role,
-      content,
-      created_at: new Date().toISOString(),
-    };
+    return (
+      fallbackResult || {
+        id: `msg-${Date.now()}`,
+        conversation_id: conversationId,
+        role,
+        content,
+        created_at: new Date().toISOString(),
+      }
+    );
   }
 }
