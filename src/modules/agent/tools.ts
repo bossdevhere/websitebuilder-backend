@@ -1,5 +1,6 @@
 import { ProjectsService } from "../projects/projects.service.js";
 import { RuntimeManager } from "../runtime/runtime.manager.js";
+import { DependencyManager } from "../runtime/dependency.manager.js";
 
 export class AgentTools {
   // List all files in a project workspace
@@ -60,6 +61,16 @@ export class AgentTools {
   static async deleteFile(userId: string, token: string, projectId: string, filePath: string): Promise<boolean> {
     await ProjectsService.deleteProjectFile(userId, token, projectId, filePath);
     return true;
+  }
+
+  // Install dependency via DependencyManager
+  static async installDependency(projectId: string, packageName: string) {
+    return DependencyManager.addDependency(projectId, packageName);
+  }
+
+  // Run command via RuntimeManager security sandbox
+  static async runCommand(projectId: string, command: string) {
+    return RuntimeManager.runCommand(projectId, command);
   }
 
   // Get project runtime status
