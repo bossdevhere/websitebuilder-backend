@@ -85,7 +85,17 @@ export class AgentService {
         { recursionLimit: 15 }
       );
 
-      // 4. Save generated file changes to DB & sync RuntimeManager workspace
+      // 4. Process file deletions & save generated file changes to DB
+      const deletedFiles = result.deletedFiles || [];
+      for (const delPath of deletedFiles) {
+        try {
+          await ProjectsService.deleteProjectFile(userId, token, projectId, delPath);
+          this.broadcast(projectId, "file_deleted", { path: delPath });
+        } catch (delErr: any) {
+          console.warn(`[AgentService] Delete file fallback warning for ${delPath}:`, delErr.message);
+        }
+      }
+
       const fileChanges = result.fileChanges || [];
       for (const change of fileChanges) {
         await ProjectsService.updateProjectFile(userId, token, projectId, change.path, change.content);
@@ -93,15 +103,23 @@ export class AgentService {
       }
 
       // Sync physical workspace on disk via RuntimeManager
-      if (fileChanges.length > 0) {
+      if (fileChanges.length > 0 || deletedFiles.length > 0) {
         const updatedProj = await ProjectsService.getProjectById(userId, token, projectId);
         await RuntimeManager.syncWorkspace(projectId, updatedProj.files || []);
       }
 
       // 5. Persist assistant message in DB
+      const changeLogs: string[] = [];
+      if (deletedFiles.length > 0) {
+        changeLogs.push(`Deleted unnecessary files:\n${deletedFiles.map((d: string) => `• ${d}`).join("\n")}`);
+      }
+      if (fileChanges.length > 0) {
+        changeLogs.push(`Updated & created architecture files:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`);
+      }
+
       const assistantText =
-        fileChanges.length > 0
-          ? `I have updated your application code based on your request:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`
+        changeLogs.length > 0
+          ? changeLogs.join("\n\n")
           : (result.logs && result.logs[0]) || `Processed request: "${userPrompt}"`;
 
       let savedMsg = null;
@@ -123,16 +141,18 @@ export class AgentService {
 
       this.broadcast(projectId, "status", {
         status: "done",
-        message: "🎉 Agent completed code generation!",
+        message: "🎉 Agent completed architectural refactoring!",
         plan: result.plan,
         logs: result.logs,
         fileChanges,
+        deletedFiles,
       });
 
       return {
         userMessage: userMsg,
         message: savedMsg,
         changes: fileChanges,
+        deletedFiles,
         status: "completed",
         previewUrl: RuntimeManager.getPreviewUrl(projectId),
       };

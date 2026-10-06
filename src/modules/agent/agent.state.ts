@@ -24,6 +24,10 @@ export const AgentAnnotation = Annotation.Root({
     reducer: (x, y) => [...x, ...y],
     default: () => [],
   }),
+  deletedFiles: Annotation<string[]>({
+    reducer: (x, y) => [...x, ...y],
+    default: () => [],
+  }),
   errorCount: Annotation<number>({
     reducer: (x, y) => y,
     default: () => 0,

@@ -97,17 +97,20 @@ async function codeGeneratorNode(state: AgentStateType) {
     .map(([path, content]) => `--- FILE: ${path} ---\n${content}`)
     .join("\n\n");
 
-  const systemPrompt = `You are a Senior Full-Stack React Engineer.
-You write production-ready TypeScript/React code.
-Given the existing project code and plan, write the full content for the updated or new files.
+  const systemPrompt = `You are a Senior Full-Stack React Engineer & Software Architect.
+You write production-ready TypeScript/React code and maintain clean project architecture.
+Given the existing project code and plan:
+1. Create new files or update existing files to improve application architecture (e.g., modular components, services, hooks).
+2. Specify files that should be deleted if they are obsolete or requested to be removed.
 
-CRITICAL INSTRUCTION: Return a single JSON object mapping file paths to their full file contents.
-Example output format:
+CRITICAL INSTRUCTION: Return a single JSON object matching this structure:
 {
-  "App.tsx": "import React from 'react';\\nexport default function App() { return <div>Hello World</div>; }",
-  "components/Header.tsx": "export const Header = () => <header>Header</header>;"
+  "deletedFiles": ["components/Unused.tsx"],
+  "files": {
+    "App.tsx": "import React from 'react';...",
+    "components/Header.tsx": "export const Header = () => <header>Header</header>;"
+  }
 }
-
 OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
 
   const userContent = `User Prompt: ${state.userPrompt}\nPlan: ${JSON.stringify(state.plan)}\n\nExisting Code:\n${fileContext}`;
@@ -119,18 +122,34 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
 
   const rawText = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
   const fileChanges: { path: string; content: string }[] = [];
+  const deletedFiles: string[] = [];
   const updatedTree: Record<string, string> = { ...state.fileTree };
   let assistantReplyText = "";
 
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
-    const parsedFiles: Record<string, string> = JSON.parse(jsonStr);
+    const parsedData: any = JSON.parse(jsonStr);
 
-    for (const [path, content] of Object.entries(parsedFiles)) {
-      if (typeof content === "string" && isCodeContent(content)) {
-        fileChanges.push({ path, content });
-        updatedTree[path] = content;
+    // 1. Process files requested to be deleted
+    const toDelete = parsedData.deletedFiles || parsedData.deleteFiles || [];
+    if (Array.isArray(toDelete)) {
+      toDelete.forEach((pathStr: string) => {
+        if (typeof pathStr === "string" && pathStr.trim().length > 0) {
+          deletedFiles.push(pathStr.trim());
+          delete updatedTree[pathStr.trim()];
+        }
+      });
+    }
+
+    // 2. Process created / updated files
+    const filesMap = parsedData.files || parsedData.fileChanges || parsedData;
+    if (typeof filesMap === "object" && filesMap !== null) {
+      for (const [path, content] of Object.entries(filesMap)) {
+        if (path !== "deletedFiles" && path !== "deleteFiles" && typeof content === "string" && isCodeContent(content)) {
+          fileChanges.push({ path, content });
+          updatedTree[path] = content;
+        }
       }
     }
   } catch (e) {
@@ -146,12 +165,16 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
     }
   }
 
-  const logs = fileChanges.length > 0
-    ? fileChanges.map((f) => `✏️ Generated code for ${f.path}`)
-    : [assistantReplyText || "Processed request."];
+  const logs: string[] = [];
+  deletedFiles.forEach((d) => logs.push(`🗑️ Deleted file ${d}`));
+  fileChanges.forEach((f) => logs.push(`✏️ Generated code for ${f.path}`));
+  if (logs.length === 0) {
+    logs.push(assistantReplyText || "Processed request.");
+  }
 
   return {
     fileChanges,
+    deletedFiles,
     fileTree: updatedTree,
     logs,
     status: "verifying",
