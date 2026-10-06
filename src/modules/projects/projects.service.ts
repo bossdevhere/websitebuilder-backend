@@ -212,6 +212,45 @@ export class ProjectsService {
       files = adminFiles.data || [];
     }
 
+    if (!files || files.length === 0) {
+      const defaultFiles = [
+        {
+          project_id: projectId,
+          path: "App.tsx",
+          content: `import React from 'react';\n\nexport default function App() {\n  return (\n    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-8 font-sans">\n      <h1 className="text-3xl font-bold text-indigo-400 mb-2">Welcome to Web Application</h1>\n      <p className="text-slate-400">Describe your website ideas in the AI Agent Assistant to generate full designs & pages!</p>\n    </div>\n  );\n}`,
+        },
+        {
+          project_id: projectId,
+          path: "index.html",
+          content: `<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Web Application</title>\n  </head>\n  <body>\n    <div id="root"></div>\n  </body>\n</html>`,
+        },
+        {
+          project_id: projectId,
+          path: "package.json",
+          content: JSON.stringify(
+            {
+              name: "web-app",
+              version: "1.0.0",
+              dependencies: {
+                react: "^18.3.1",
+                "react-dom": "^18.3.1",
+              },
+            },
+            null,
+            2
+          ),
+        },
+      ];
+
+      await supabaseAdmin.from("project_files").upsert(defaultFiles, { onConflict: "project_id,path" });
+      const createdFiles = await supabaseAdmin
+        .from("project_files")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("path", { ascending: true });
+      files = createdFiles.data && createdFiles.data.length > 0 ? createdFiles.data : (defaultFiles as any);
+    }
+
     return {
       ...project,
       files: files || [],
