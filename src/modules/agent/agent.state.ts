@@ -13,7 +13,7 @@ export const AgentAnnotation = Annotation.Root({
     default: () => ({}),
   }),
   plan: Annotation<string[]>({
-    reducer: (x, y) => [...x, ...y],
+    reducer: (x, y) => y,
     default: () => [],
   }),
   logs: Annotation<string[]>({
@@ -27,6 +27,10 @@ export const AgentAnnotation = Annotation.Root({
   deletedFiles: Annotation<string[]>({
     reducer: (x, y) => [...x, ...y],
     default: () => [],
+  }),
+  assistantReply: Annotation<string>({
+    reducer: (x, y) => y || x,
+    default: () => "",
   }),
   errorCount: Annotation<number>({
     reducer: (x, y) => y,

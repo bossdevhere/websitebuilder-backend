@@ -18,11 +18,11 @@ export function getLLMConfig(): LLMConfig {
   let defaultModel = "gpt-4o-mini";
 
   if (provider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
-  if (provider === "gemini") defaultModel = "gemini-1.5-flash";
+  if (provider === "gemini") defaultModel = "gemini-flash-latest";
   if (provider === "ollama") defaultModel = "qwen2.5-coder";
 
   const modelName = process.env.LLM_MODEL_NAME || defaultModel;
-  const temperature = parseFloat(process.env.LLM_TEMPERATURE || "0.2");
+  const temperature = parseFloat(process.env.LLM_TEMPERATURE || "0.1");
 
   return { provider, modelName, temperature };
 }
@@ -47,6 +47,7 @@ export function getLLMClient(): BaseChatModel {
       return new ChatGoogleGenerativeAI({
         model: config.modelName,
         temperature: config.temperature,
+        maxRetries: 3,
         apiKey,
       });
     }

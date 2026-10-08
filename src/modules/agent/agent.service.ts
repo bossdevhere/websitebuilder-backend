@@ -67,7 +67,7 @@ export class AgentService {
       });
     }
 
-    this.broadcast(projectId, "status", { status: "planning", message: "🤔 AI Agent is planning project architecture..." });
+    this.broadcast(projectId, "status", { status: "planning", message: "🤔 AI Agent is thinking..." });
 
     // 3. Execute LangGraph Workflow
     try {
@@ -108,19 +108,18 @@ export class AgentService {
         await RuntimeManager.syncWorkspace(projectId, updatedProj.files || []);
       }
 
-      // 5. Persist assistant message in DB
-      const changeLogs: string[] = [];
-      if (deletedFiles.length > 0) {
-        changeLogs.push(`Deleted unnecessary files:\n${deletedFiles.map((d: string) => `• ${d}`).join("\n")}`);
+      // 5. Build assistant message text for chat UI
+      let assistantText = result.assistantReply || "";
+      if (!assistantText) {
+        const changeLogs: string[] = [];
+        if (deletedFiles.length > 0) {
+          changeLogs.push(`Deleted files:\n${deletedFiles.map((d: string) => `• ${d}`).join("\n")}`);
+        }
+        if (fileChanges.length > 0) {
+          changeLogs.push(`Updated files:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`);
+        }
+        assistantText = changeLogs.length > 0 ? changeLogs.join("\n\n") : (result.logs && result.logs[0]) || `Processed: "${userPrompt}"`;
       }
-      if (fileChanges.length > 0) {
-        changeLogs.push(`Updated & created architecture files:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`);
-      }
-
-      const assistantText =
-        changeLogs.length > 0
-          ? changeLogs.join("\n\n")
-          : (result.logs && result.logs[0]) || `Processed request: "${userPrompt}"`;
 
       let savedMsg = null;
       if (conversationId) {
@@ -141,7 +140,7 @@ export class AgentService {
 
       this.broadcast(projectId, "status", {
         status: "done",
-        message: "🎉 Agent completed architectural refactoring!",
+        message: assistantText,
         plan: result.plan,
         logs: result.logs,
         fileChanges,
@@ -158,11 +157,41 @@ export class AgentService {
       };
     } catch (err: any) {
       console.error("[AGENT ERROR]", err);
+
+      let friendlyErrMsg = err.message || "Agent execution error";
+      if (err.status === 429 || friendlyErrMsg.includes("429") || friendlyErrMsg.includes("Quota exceeded") || friendlyErrMsg.includes("quota")) {
+        friendlyErrMsg = "⚠️ Google Gemini API Quota Exceeded (429). The provided Gemini API Key has reached its free tier daily request limit. Please provide a fresh API key from https://aistudio.google.com/app/apikey or switch to another LLM provider.";
+      } else if (err.status === 503 || friendlyErrMsg.includes("503") || friendlyErrMsg.includes("high demand") || friendlyErrMsg.includes("temporarily unavailable")) {
+        friendlyErrMsg = "⚠️ Google Gemini API Busy (503). Google AI servers are experiencing temporary high demand. Please try sending your prompt again in a few seconds!";
+      }
+
       this.broadcast(projectId, "status", {
         status: "error",
-        message: `Agent error: ${err.message}`,
+        message: friendlyErrMsg,
       });
-      throw err;
+
+      const errAssistantMsg = {
+        id: `asst-err-${Date.now()}`,
+        role: "assistant" as const,
+        content: friendlyErrMsg,
+        created_at: new Date().toISOString(),
+      };
+
+      if (conversationId) {
+        try {
+          await ConversationsService.addMessage(conversationId, "assistant", friendlyErrMsg, projectId);
+        } catch (e) {}
+      }
+
+      return {
+        userMessage: userMsg,
+        message: errAssistantMsg,
+        changes: [],
+        deletedFiles: [],
+        status: "error",
+        error: friendlyErrMsg,
+        previewUrl: RuntimeManager.getPreviewUrl(projectId),
+      };
     }
   }
 

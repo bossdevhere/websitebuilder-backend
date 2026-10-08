@@ -3,66 +3,53 @@ import { AgentAnnotation, AgentStateType } from "./agent.state.js";
 import { getLLMClient } from "../llm/llm.factory.js";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 
-const GREETINGS = [
-  "hi",
-  "hello",
-  "hey",
-  "hlo",
-  "sup",
-  "howdy",
-  "good morning",
-  "good evening",
-  "hi there",
-  "hello there",
-  "who are you",
-  "what can you do",
-];
-
-function isSimpleGreeting(prompt: string): boolean {
-  const clean = prompt.trim().toLowerCase().replace(/[^\w\s]/gi, "");
-  return GREETINGS.includes(clean);
-}
-
-// 1. Planner Node: Analyzes prompt and existing code to build step-by-step file plan
+// 1. Planner Node: High-speed planner analyzing request and file tree paths
 async function plannerNode(state: AgentStateType) {
-  // Fast path for simple conversational greetings/questions
-  if (isSimpleGreeting(state.userPrompt)) {
-    return {
-      plan: [],
-      logs: ["👋 Hello! I am your AI Web App Assistant. Ask me to build components, add pages, or style your web application!"],
-      fileChanges: [],
-      status: "done",
-    };
-  }
-
   const llm = getLLMClient();
   const filePaths = Object.keys(state.fileTree || {}).join(", ") || "App.tsx, index.html, package.json";
 
-  const systemPrompt = `You are an expert AI Lead Software Architect.
-Analyze the user request and existing project files (${filePaths}).
-Create a clear, concise JSON array of strings describing the exact files to create or modify.
-Output ONLY a JSON array, like: ["Update App.tsx to add state", "Create components/Navbar.tsx"]
-If no code files need to be changed, return an empty array: []`;
+  const systemPrompt = `You are a fast, expert AI Web App Architect.
+Analyze the user prompt with current files (${filePaths}).
+
+Determine if prompt is:
+1. CONVERSATIONAL (greetings, 'hi', 'how are you', advice, or questions without code requests).
+   -> Set "isCodeRequest": false, "reply": "Warm helpful response", "plan": [].
+
+2. CODE / WEBSITE CREATION REQUEST (e.g. 'build a portfolio', 'make a coffee site', 'add hero section').
+   -> Set "isCodeRequest": true, "reply": "Explanation of planned website sections", "plan": ["Create components/Navbar.tsx", "Update App.tsx"].
+
+Return ONLY JSON:
+{
+  "isCodeRequest": boolean,
+  "reply": "Message to user",
+  "plan": ["file steps..."]
+}`;
 
   const response = await llm.invoke([
     new SystemMessage(systemPrompt),
-    new HumanMessage(`User Request: ${state.userPrompt}`),
+    new HumanMessage(`User Prompt: ${state.userPrompt}`),
   ]);
 
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  let isCodeRequest = false;
+  let replyText = "";
   let planSteps: string[] = [];
 
   try {
     const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    planSteps = JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned);
+    isCodeRequest = Boolean(parsed.isCodeRequest);
+    replyText = parsed.reply || "";
+    planSteps = Array.isArray(parsed.plan) ? parsed.plan : [];
   } catch (e) {
-    planSteps = [`Implement feature: ${state.userPrompt}`];
+    replyText = text.replace(/```[\s\S]*?```/g, "").trim() || `Processed: "${state.userPrompt}"`;
   }
 
   return {
-    plan: planSteps,
-    logs: [`📋 Plan generated (${planSteps.length} steps)`],
-    status: planSteps.length > 0 ? "generating" : "done",
+    plan: isCodeRequest ? planSteps : [],
+    assistantReply: replyText,
+    logs: [replyText || `📋 Architecture plan generated (${planSteps.length} steps)`],
+    status: isCodeRequest && planSteps.length > 0 ? "generating" : "done",
   };
 }
 
@@ -80,13 +67,12 @@ function isCodeContent(str: string): boolean {
   );
 }
 
-// 2. Code Generator Node: Writes complete file code using active LLM engine
+// 2. Code Generator Node: Fast modular code generation with Tailwind CSS & lucide-react icons
 async function codeGeneratorNode(state: AgentStateType) {
-  // If plan is empty, skip code generation
   if (!state.plan || state.plan.length === 0) {
     return {
       fileChanges: [],
-      logs: ["No code changes required."],
+      logs: [state.assistantReply || "No code changes required."],
       status: "verifying",
     };
   }
@@ -97,37 +83,30 @@ async function codeGeneratorNode(state: AgentStateType) {
     .map(([path, content]) => `--- FILE: ${path} ---\n${content}`)
     .join("\n\n");
 
-  const systemPrompt = `You are an elite Lead Software Architect & Master React/Tailwind Developer.
-You write complete, production-ready, beautifully styled TypeScript/React applications with clean modular architecture.
+  const systemPrompt = `You are an expert AI website designer & React/Tailwind engineer.
+Write complete, modern, production-quality code.
 
-DESIGN & ARCHITECTURE GUIDELINES:
-1. When asked to build or update a website or web app, create a complete multi-section modular structure:
-   - "components/Navbar.tsx": Header with logo, navigation links, mobile menu state, and CTA button.
-   - "components/Hero.tsx": Eye-catching hero section with heading, description, badges, and action buttons.
-   - "components/About.tsx": Company / project information with key highlights or stats grid.
-   - "components/Services.tsx" or "components/Features.tsx": Responsive 3+ feature/service cards with icons.
-   - "components/CTA.tsx": Call-To-Action section with newsletter/contact form trigger.
-   - "components/Footer.tsx": Footer with logo, navigation links, and copyright notice.
-   - "App.tsx": Root component importing and composing all sections together cleanly.
-2. Use Tailwind CSS for responsive styling, dark background gradients, flex/grid layouts, and hover effects.
-3. Import icons from "lucide-react" (e.g., Sparkles, ArrowRight, Shield, Zap, Globe, Mail, Menu, X).
-4. Make sure App.tsx imports all newly generated components so the application renders instantly in the preview.
-5. If files are obsolete or should be removed, list them in "deletedFiles".
+DESIGN & REACT RULES:
+1. Every section must look polished, intentional, and responsive (Desktop/Mobile).
+2. AVOID: Plain default HTML, generic white cards, "Lorem Ipsum", or generic placeholders like "Feature 1".
+3. USE: Strong visual hierarchy, distinct color theme, rounded corners, shadow effects, Tailwind styling, and lucide-react icons.
+4. REACT KEYS: When rendering array lists with .map(), ALWAYS add a unique 'key' prop (e.g. key={index} or key={item.id}) on the top-level element to satisfy React key requirements.
+5. Modular components: "components/Navbar.tsx", "components/Hero.tsx", "components/About.tsx", "components/Services.tsx", "components/CTA.tsx", "components/Footer.tsx", composed inside "App.tsx".
 
-CRITICAL INSTRUCTION: Return ONLY a JSON object with this exact structure:
+Return ONLY JSON:
 {
-  "deletedFiles": ["components/OldFile.tsx"],
+  "summary": "Summary of updates",
+  "deletedFiles": [],
   "files": {
-    "components/Navbar.tsx": "full code...",
-    "components/Hero.tsx": "full code...",
-    "components/About.tsx": "full code...",
-    "components/Services.tsx": "full code...",
-    "components/CTA.tsx": "full code...",
-    "components/Footer.tsx": "full code...",
-    "App.tsx": "full code..."
+    "components/Navbar.tsx": "code...",
+    "components/Hero.tsx": "code...",
+    "components/About.tsx": "code...",
+    "components/Services.tsx": "code...",
+    "components/CTA.tsx": "code...",
+    "components/Footer.tsx": "code...",
+    "App.tsx": "code..."
   }
-}
-OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
+}`;
 
   const userContent = `User Prompt: ${state.userPrompt}\nPlan: ${JSON.stringify(state.plan)}\n\nExisting Code:\n${fileContext}`;
 
@@ -140,14 +119,17 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
   const fileChanges: { path: string; content: string }[] = [];
   const deletedFiles: string[] = [];
   const updatedTree: Record<string, string> = { ...state.fileTree };
-  let assistantReplyText = "";
+  let assistantReplyText = state.assistantReply || "";
 
   try {
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : rawText;
     const parsedData: any = JSON.parse(jsonStr);
 
-    // 1. Process files requested to be deleted
+    if (parsedData.summary && typeof parsedData.summary === "string") {
+      assistantReplyText = parsedData.summary;
+    }
+
     const toDelete = parsedData.deletedFiles || parsedData.deleteFiles || [];
     if (Array.isArray(toDelete)) {
       toDelete.forEach((pathStr: string) => {
@@ -158,26 +140,23 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
       });
     }
 
-    // 2. Process created / updated files
     const filesMap = parsedData.files || parsedData.fileChanges || parsedData;
     if (typeof filesMap === "object" && filesMap !== null) {
       for (const [path, content] of Object.entries(filesMap)) {
-        if (path !== "deletedFiles" && path !== "deleteFiles" && typeof content === "string" && isCodeContent(content)) {
+        if (path !== "deletedFiles" && path !== "deleteFiles" && path !== "summary" && typeof content === "string" && isCodeContent(content)) {
           fileChanges.push({ path, content });
           updatedTree[path] = content;
         }
       }
     }
   } catch (e) {
-    // If JSON parsing fails, extract fenced code block ONLY if valid code
     const codeBlockMatch = rawText.match(/```(?:tsx|jsx|typescript|javascript|html|css)?\n([\s\S]*?)```/);
     if (codeBlockMatch && isCodeContent(codeBlockMatch[1])) {
       const code = codeBlockMatch[1].trim();
       fileChanges.push({ path: "App.tsx", content: code });
       updatedTree["App.tsx"] = code;
     } else {
-      // Conversational text - do NOT touch project files!
-      assistantReplyText = rawText.replace(/```[\s\S]*?```/g, "").trim();
+      assistantReplyText = rawText.replace(/```[\s\S]*?```/g, "").trim() || assistantReplyText;
     }
   }
 
@@ -192,12 +171,13 @@ OUTPUT ONLY VALID JSON. DO NOT INCLUDE EXTRA TEXT OUTSIDE THE JSON BLOCK.`;
     fileChanges,
     deletedFiles,
     fileTree: updatedTree,
+    assistantReply: assistantReplyText,
     logs,
     status: "verifying",
   };
 }
 
-// 3. Verifier Node: Validates generated files syntax
+// 3. Verifier Node
 async function verifierNode(state: AgentStateType) {
   const fileCount = state.fileChanges?.length || 0;
   return {
@@ -206,7 +186,6 @@ async function verifierNode(state: AgentStateType) {
   };
 }
 
-// Conditional routing function
 function routeAfterPlanner(state: AgentStateType) {
   if (!state.plan || state.plan.length === 0) {
     return "verifier";
@@ -214,7 +193,6 @@ function routeAfterPlanner(state: AgentStateType) {
   return "code_generator";
 }
 
-// Construct LangGraph StateGraph with conditional routing
 const workflow = new StateGraph(AgentAnnotation)
   .addNode("planner", plannerNode)
   .addNode("code_generator", codeGeneratorNode)
