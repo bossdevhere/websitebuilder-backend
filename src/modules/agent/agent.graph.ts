@@ -90,8 +90,9 @@ DESIGN & REACT RULES:
 1. Every section must look polished, intentional, and responsive (Desktop/Mobile).
 2. AVOID: Plain default HTML, generic white cards, "Lorem Ipsum", or generic placeholders like "Feature 1".
 3. USE: Strong visual hierarchy, distinct color theme, rounded corners, shadow effects, Tailwind styling, and lucide-react icons.
-4. REACT KEYS: When rendering array lists with .map(), ALWAYS add a unique 'key' prop (e.g. key={index} or key={item.id}) on the top-level element to satisfy React key requirements.
-5. Modular components: "components/Navbar.tsx", "components/Hero.tsx", "components/About.tsx", "components/Services.tsx", "components/CTA.tsx", "components/Footer.tsx", composed inside "App.tsx".
+4. REACT COMPONENT EXPORTS: Always declare each component with 'export default function ComponentName(props) { ... }' so default imports in App.tsx ('import ComponentName from "./components/ComponentName"') resolve flawlessly.
+5. REACT KEYS: When rendering array lists with .map((item, index) => ...), ALWAYS add a unique 'key' prop (e.g. key={item.id || item.title || index}) on the top-level returned JSX element to prevent React key console warnings.
+6. Modular components: "components/Navbar.tsx", "components/Hero.tsx", "components/About.tsx", "components/Services.tsx", "components/CTA.tsx", "components/Footer.tsx", composed inside "App.tsx".
 
 Return ONLY JSON:
 {
