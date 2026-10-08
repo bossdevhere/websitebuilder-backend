@@ -18,7 +18,7 @@ export function getLLMConfig(): LLMConfig {
   let defaultModel = "gpt-4o-mini";
 
   if (provider === "anthropic") defaultModel = "claude-3-5-sonnet-20241022";
-  if (provider === "gemini") defaultModel = "gemini-flash-latest";
+  if (provider === "gemini") defaultModel = "gemini-3.8-flash";
   if (provider === "ollama") defaultModel = "qwen2.5-coder";
 
   const modelName = process.env.LLM_MODEL_NAME || defaultModel;
@@ -44,12 +44,29 @@ export function getLLMClient(): BaseChatModel {
     case "gemini": {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("GEMINI_API_KEY is not set in environment");
-      return new ChatGoogleGenerativeAI({
-        model: config.modelName,
+
+      const primary = new ChatGoogleGenerativeAI({
+        model: config.modelName || "gemini-3.5-flash",
         temperature: config.temperature,
-        maxRetries: 3,
+        maxRetries: 2,
         apiKey,
       });
+
+      const fallback1 = new ChatGoogleGenerativeAI({
+        model: "gemini-3.1-flash-lite",
+        temperature: config.temperature,
+        maxRetries: 2,
+        apiKey,
+      });
+
+      const fallback2 = new ChatGoogleGenerativeAI({
+        model: "gemini-3.8-flash",
+        temperature: config.temperature,
+        maxRetries: 2,
+        apiKey,
+      });
+
+      return primary.withFallbacks([fallback1, fallback2]) as unknown as BaseChatModel;
     }
 
     case "ollama": {
