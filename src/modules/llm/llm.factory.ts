@@ -66,7 +66,21 @@ export function getLLMClient(): BaseChatModel {
         apiKey,
       });
 
-      return primary.withFallbacks([fallback1, fallback2]) as unknown as BaseChatModel;
+      const fallback3 = new ChatGoogleGenerativeAI({
+        model: "gemini-2.0-flash",
+        temperature: config.temperature,
+        maxRetries: 2,
+        apiKey,
+      });
+
+      const fallback4 = new ChatGoogleGenerativeAI({
+        model: "gemini-1.5-flash",
+        temperature: config.temperature,
+        maxRetries: 2,
+        apiKey,
+      });
+
+      return primary.withFallbacks([fallback1, fallback2, fallback3, fallback4]) as unknown as BaseChatModel;
     }
 
     case "ollama": {
