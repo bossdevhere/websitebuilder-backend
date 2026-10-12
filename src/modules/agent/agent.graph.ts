@@ -8,15 +8,21 @@ async function plannerNode(state: AgentStateType) {
   const llm = getLLMClient();
   const filePaths = Object.keys(state.fileTree || {}).join(", ") || "App.tsx, index.html, package.json";
 
+  const historyText =
+    state.chatHistory && state.chatHistory.length > 0
+      ? `Conversation History:\n${state.chatHistory.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n")}\n\n`
+      : "";
+
   const systemPrompt = `You are a fast, expert AI Web App Architect.
-Analyze the user prompt with current files (${filePaths}).
+Analyze the user prompt and conversation history with current project files (${filePaths}).
 
 Determine if prompt is:
 1. CONVERSATIONAL (greetings, 'hi', 'how are you', advice, or questions without code requests).
    -> Set "isCodeRequest": false, "reply": "Warm helpful response", "plan": [].
 
-2. CODE / WEBSITE CREATION REQUEST (e.g. 'build a portfolio', 'make a coffee site', 'add hero section').
-   -> Set "isCodeRequest": true, "reply": "Explanation of planned website sections", "plan": ["Create components/Navbar.tsx", "Update App.tsx"].
+2. CODE / WEBSITE CREATION OR MODIFICATION REQUEST (e.g. 'build a portfolio', 'make a coffee site', 'lets make a simple e commerce website', 'improve the website more', 'add cart').
+   -> Set "isCodeRequest": true, "reply": "Clear summary of planned sections", "plan": ["components/Navbar.tsx", "components/Hero.tsx", "App.tsx"].
+   -> Keep plan focused: Plan 3 to 5 core modular files so generation is fast, modular, and responsive.
 
 Return ONLY JSON:
 {
@@ -27,7 +33,7 @@ Return ONLY JSON:
 
   const response = await llm.invoke([
     new SystemMessage(systemPrompt),
-    new HumanMessage(`User Prompt: ${state.userPrompt}`),
+    new HumanMessage(`${historyText}Current User Request: ${state.userPrompt}`),
   ]);
 
   const text = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
@@ -127,7 +133,12 @@ Return ONLY JSON:
   }
 }`;
 
-  const userContent = `User Prompt: ${state.userPrompt}\nPlan: ${JSON.stringify(state.plan)}\n\nExisting Code:\n${fileContext}`;
+  const historyText =
+    state.chatHistory && state.chatHistory.length > 0
+      ? `Conversation History:\n${state.chatHistory.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n")}\n\n`
+      : "";
+
+  const userContent = `${historyText}Current User Request: ${state.userPrompt}\nPlan: ${JSON.stringify(state.plan)}\n\nExisting Code:\n${fileContext}`;
 
   const response = await llm.invoke([
     new SystemMessage(systemPrompt),

@@ -49,7 +49,14 @@ export class AgentService {
       fileTree[f.path] = f.content;
     });
 
-    // 2. Persist user message in DB
+    // 2. Persist user message in DB & fetch recent history for multi-turn context
+    const previousMsgs = conversationId
+      ? await ConversationsService.getConversationMessages(userId, token, conversationId, projectId)
+      : [];
+    const chatHistory = previousMsgs
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     let userMsg: any = null;
     if (conversationId) {
       userMsg = await ConversationsService.addMessage(conversationId, "user", userPrompt, projectId);
@@ -67,7 +74,7 @@ export class AgentService {
       });
     }
 
-    this.broadcast(projectId, "status", { status: "planning", message: "🤔 AI Agent is thinking..." });
+    this.broadcast(projectId, "status", { status: "planning", message: "🤔 AI Agent is planning layout..." });
 
     // 3. Execute LangGraph Workflow
     try {
@@ -75,6 +82,7 @@ export class AgentService {
         {
           projectId,
           userPrompt,
+          chatHistory,
           fileTree,
           plan: [],
           logs: [],

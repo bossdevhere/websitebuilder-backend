@@ -32,6 +32,9 @@ export interface DBMessage {
 }
 
 export class ConversationsService {
+  private static memoryConversations: Map<string, Conversation[]> = new Map();
+  private static memoryMessages: Map<string, DBMessage[]> = new Map();
+
   private static getClient(token?: string) {
     if (token) {
       return createClient(supabaseUrl, supabaseAnonKey, {
@@ -54,6 +57,7 @@ export class ConversationsService {
         .order("updated_at", { ascending: false });
 
       if (!error && data && data.length > 0) {
+        this.memoryConversations.set(projectId, data);
         return data;
       }
 
@@ -64,14 +68,20 @@ export class ConversationsService {
         .order("updated_at", { ascending: false });
 
       if (adminFallback.data && adminFallback.data.length > 0) {
+        this.memoryConversations.set(projectId, adminFallback.data);
         return adminFallback.data;
       }
     } catch (err) {
       console.warn("Conversations query error, using fallback thread:", err);
     }
 
+    const cached = this.memoryConversations.get(projectId);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+
     // Default Fallback Thread
-    return [
+    const defaultThread: Conversation[] = [
       {
         id: projectId,
         project_id: projectId,
@@ -81,6 +91,8 @@ export class ConversationsService {
         updated_at: new Date().toISOString(),
       },
     ];
+    this.memoryConversations.set(projectId, defaultThread);
+    return defaultThread;
   }
 
   // Create a new persistent conversation thread
@@ -91,6 +103,7 @@ export class ConversationsService {
     title: string = "New Chat"
   ): Promise<Conversation> {
     const client = this.getClient(token);
+    let created: Conversation | null = null;
 
     try {
       const { data } = await client
@@ -99,27 +112,33 @@ export class ConversationsService {
         .select()
         .single();
 
-      if (data) return data;
+      if (data) created = data;
+    } catch (e) {}
 
-      const adminFallback = await supabaseAdmin
-        .from("conversations")
-        .insert({ project_id: projectId, user_id: userId, title })
-        .select()
-        .single();
+    if (!created) {
+      try {
+        const adminFallback = await supabaseAdmin
+          .from("conversations")
+          .insert({ project_id: projectId, user_id: userId, title })
+          .select()
+          .single();
 
-      if (adminFallback.data) return adminFallback.data;
-    } catch (e) {
-      console.warn("Conversations insert error, using fallback conversation object:", e);
+        if (adminFallback.data) created = adminFallback.data;
+      } catch (e) {}
     }
 
-    return {
-      id: projectId,
+    const newConv: Conversation = created || {
+      id: `conv-${Date.now()}`,
       project_id: projectId,
       user_id: userId,
       title,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    const existingList = this.memoryConversations.get(projectId) || [];
+    this.memoryConversations.set(projectId, [newConv, ...existingList.filter((c) => c.id !== newConv.id)]);
+    return newConv;
   }
 
   // Get messages for a specific conversation with chat_messages fallback
@@ -141,6 +160,7 @@ export class ConversationsService {
         .order("created_at", { ascending: true });
 
       if (!error && data && data.length > 0) {
+        this.memoryMessages.set(conversationId, data);
         return data;
       }
     } catch (e) {}
@@ -154,17 +174,21 @@ export class ConversationsService {
         .order("created_at", { ascending: true });
 
       if (chatMsgs && chatMsgs.length > 0) {
-        return chatMsgs.map((m) => ({
+        const mapped = chatMsgs.map((m) => ({
           id: m.id,
           conversation_id: conversationId,
           role: m.role as any,
           content: m.content,
           created_at: m.created_at,
         }));
+        this.memoryMessages.set(conversationId, mapped);
+        return mapped;
       }
     } catch (e) {}
 
-    return [];
+    // 3. Fallback: In-memory messages cache
+    const cached = this.memoryMessages.get(conversationId) || this.memoryMessages.get(targetProject);
+    return cached ? [...cached] : [];
   }
 
   // Add a message to a conversation thread with chat_messages fallback
@@ -216,14 +240,22 @@ export class ConversationsService {
       }
     } catch (e) {}
 
-    return (
-      fallbackResult || {
-        id: `msg-${Date.now()}`,
-        conversation_id: conversationId,
-        role,
-        content,
-        created_at: new Date().toISOString(),
-      }
-    );
+    const finalMsg: DBMessage = fallbackResult || {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      conversation_id: conversationId,
+      role,
+      content,
+      created_at: new Date().toISOString(),
+    };
+
+    // Keep stored in in-memory caches
+    const convMsgs = this.memoryMessages.get(conversationId) || [];
+    this.memoryMessages.set(conversationId, [...convMsgs, finalMsg]);
+    if (targetProject !== conversationId) {
+      const projMsgs = this.memoryMessages.get(targetProject) || [];
+      this.memoryMessages.set(targetProject, [...projMsgs, finalMsg]);
+    }
+
+    return finalMsg;
   }
 }

@@ -27,7 +27,8 @@ app.use("/api", apiRouter);
 // Error Handler
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[SERVER] websitebuilder-backend running on port ${PORT}`);
   console.log(`[SERVER] Health check: http://localhost:${PORT}/api/health`);
 });
+server.setTimeout(300000); // 5 minutes timeout for AI agent code generation

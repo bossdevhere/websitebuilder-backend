@@ -5,9 +5,18 @@ export interface FileChange {
   content: string;
 }
 
+export interface ChatMessageItem {
+  role: string;
+  content: string;
+}
+
 export const AgentAnnotation = Annotation.Root({
   projectId: Annotation<string>(),
   userPrompt: Annotation<string>(),
+  chatHistory: Annotation<ChatMessageItem[]>({
+    reducer: (x, y) => y || x,
+    default: () => [],
+  }),
   fileTree: Annotation<Record<string, string>>({
     reducer: (x, y) => ({ ...x, ...y }),
     default: () => ({}),
