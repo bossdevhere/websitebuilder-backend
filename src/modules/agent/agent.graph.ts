@@ -36,12 +36,30 @@ Return ONLY JSON:
   let planSteps: string[] = [];
 
   try {
-    const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsed = JSON.parse(jsonStr);
     isCodeRequest = Boolean(parsed.isCodeRequest);
     replyText = parsed.reply || "";
     planSteps = Array.isArray(parsed.plan) ? parsed.plan : [];
   } catch (e) {
+    const lowerPrompt = (state.userPrompt || "").toLowerCase();
+    const isLikelyCode =
+      lowerPrompt.includes("build") ||
+      lowerPrompt.includes("create") ||
+      lowerPrompt.includes("make") ||
+      lowerPrompt.includes("add") ||
+      lowerPrompt.includes("update") ||
+      lowerPrompt.includes("change") ||
+      lowerPrompt.includes("design") ||
+      lowerPrompt.includes("page") ||
+      lowerPrompt.includes("site") ||
+      lowerPrompt.includes("website") ||
+      lowerPrompt.includes("app");
+    if (isLikelyCode) {
+      isCodeRequest = true;
+      planSteps = ["Update App.tsx and modular components"];
+    }
     replyText = text.replace(/```[\s\S]*?```/g, "").trim() || `Processed: "${state.userPrompt}"`;
   }
 
@@ -151,12 +169,21 @@ Return ONLY JSON:
       }
     }
   } catch (e) {
-    const codeBlockMatch = rawText.match(/```(?:tsx|jsx|typescript|javascript|html|css)?\n([\s\S]*?)```/);
-    if (codeBlockMatch && isCodeContent(codeBlockMatch[1])) {
-      const code = codeBlockMatch[1].trim();
-      fileChanges.push({ path: "App.tsx", content: code });
-      updatedTree["App.tsx"] = code;
-    } else {
+    const codeBlockRegex = /```(?:tsx|jsx|typescript|javascript|html|css)?\n([\s\S]*?)```/g;
+    let match;
+    let extractedCount = 0;
+    while ((match = codeBlockRegex.exec(rawText)) !== null) {
+      const blockCode = match[1].trim();
+      if (isCodeContent(blockCode)) {
+        const firstLine = blockCode.split("\n")[0] || "";
+        const fileMatch = firstLine.match(/\/\/\s*(?:File:\s*)?([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)/i);
+        const targetPath = fileMatch ? fileMatch[1].trim() : (extractedCount === 0 ? "App.tsx" : `components/Component${extractedCount}.tsx`);
+        fileChanges.push({ path: targetPath, content: blockCode });
+        updatedTree[targetPath] = blockCode;
+        extractedCount++;
+      }
+    }
+    if (extractedCount === 0) {
       assistantReplyText = rawText.replace(/```[\s\S]*?```/g, "").trim() || assistantReplyText;
     }
   }

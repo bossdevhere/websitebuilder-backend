@@ -1,5 +1,7 @@
+import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../config/supabase.js";
+import { RuntimeManager } from "../runtime/runtime.manager.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -435,6 +437,16 @@ export default function App() {
     try {
       await supabaseAdmin.from("projects").delete().eq("id", projectId);
     } catch (e) {}
+
+    // Cleanup runtime dev server and disk workspace
+    try {
+      RuntimeManager.stopDevServer(projectId);
+      const wsDir = RuntimeManager.getWorkspacePath(projectId);
+      if (fs.existsSync(wsDir)) {
+        fs.rmSync(wsDir, { recursive: true, force: true });
+      }
+    } catch (e) {}
+
     return { success: true };
   }
 }
