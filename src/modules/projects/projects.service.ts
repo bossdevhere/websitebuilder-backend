@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../config/supabase.js";
 import { RuntimeManager } from "../runtime/runtime.manager.js";
@@ -25,6 +26,10 @@ export interface ProjectFile {
 }
 
 export class ProjectsService {
+  // In-memory caches to guarantee project and file isolation across user sessions
+  private static memoryProjects: Map<string, any> = new Map();
+  private static memoryProjectFiles: Map<string, ProjectFile[]> = new Map();
+
   // Helper to create a user-authenticated Supabase client using their Bearer JWT token
   private static getClient(token?: string) {
     if (token) {
@@ -43,23 +48,125 @@ export class ProjectsService {
     return supabaseAdmin;
   }
 
-  // Create a new project with initial starter files
+  // Generate clean, modern default starter code for a new project
+  static getDefaultFiles(projectId: string, projectName: string = "New Project"): ProjectFile[] {
+    const safeName = projectName?.trim() || "New Project";
+    return [
+      {
+        project_id: projectId,
+        path: "App.tsx",
+        content: `import React, { useState } from 'react';
+import { Sparkles, Code2, Rocket, ArrowRight, CheckCircle2 } from 'lucide-react';
+
+export default function App() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Top Header */}
+      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-600/30">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <span className="font-bold text-lg text-white tracking-tight">${safeName}</span>
+        </div>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+          Ready for AI Development
+        </span>
+      </header>
+
+      {/* Hero Welcome Canvas */}
+      <main className="flex-1 flex items-center justify-center p-6">
+        <div className="max-w-2xl w-full text-center space-y-8">
+          <div className="inline-flex p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-indigo-400 mb-2">
+            <Rocket className="w-10 h-10" />
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+              Welcome to <span className="text-indigo-400">${safeName}</span>
+            </h1>
+            <p className="text-slate-400 text-base md:text-lg max-w-xl mx-auto leading-relaxed">
+              Your new project workspace is ready. Tell the AI assistant what you want to build, or edit this code directly to get started.
+            </p>
+          </div>
+
+          {/* Interactive React State Widget */}
+          <div className="p-6 bg-slate-900/80 border border-slate-800 rounded-2xl max-w-md mx-auto shadow-xl space-y-4">
+            <div className="flex items-center justify-between text-sm text-slate-400">
+              <span className="flex items-center gap-1.5 font-medium text-slate-300">
+                <Code2 className="w-4 h-4 text-indigo-400" /> Interactive React State
+              </span>
+              <span className="text-xs text-indigo-400 font-mono">Count: {count}</span>
+            </div>
+            <button
+              onClick={() => setCount((c) => c + 1)}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-indigo-600/25 active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <span>Click to test reactivity</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Prompt Ideas */}
+          <div className="pt-4 border-t border-slate-900 grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+            <div className="p-3.5 bg-slate-900/50 border border-slate-800/80 rounded-xl">
+              <p className="text-xs font-semibold text-white mb-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" /> Full App Generation
+              </p>
+              <p className="text-[11px] text-slate-400">Ask the AI: "Build a modern dashboard with charts and dark mode"</p>
+            </div>
+            <div className="p-3.5 bg-slate-900/50 border border-slate-800/80 rounded-xl">
+              <p className="text-xs font-semibold text-white mb-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" /> Component Library
+              </p>
+              <p className="text-[11px] text-slate-400">Ask the AI: "Add an e-commerce catalog with search and cart drawer"</p>
+            </div>
+            <div className="p-3.5 bg-slate-900/50 border border-slate-800/80 rounded-xl">
+              <p className="text-xs font-semibold text-white mb-1 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" /> Custom Landing Page
+              </p>
+              <p className="text-[11px] text-slate-400">Ask the AI: "Create a SaaS landing page with pricing and testimonials"</p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-900 py-4 text-center text-xs text-slate-500">
+        AI Web Builder • Powered by Autonomous LLM Agent
+      </footer>
+    </div>
+  );
+}
+`,
+      },
+      {
+        project_id: projectId,
+        path: "index.html",
+        content: `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${safeName}</title>
+  </head>
+  <body class="bg-slate-950 text-slate-100 font-sans">
+    <div id="root"></div>
+  </body>
+</html>`,
+      },
+    ];
+  }
+
+  // Create a new project with fresh default starter files
   static async createProject(userId: string, token: string, name: string, description?: string) {
     const client = this.getClient(token);
+    let createdProject: any = null;
 
-    const { data: project, error: projectError } = await client
-      .from("projects")
-      .insert({
-        user_id: userId,
-        name,
-        description: description || "",
-      })
-      .select()
-      .single();
-
-    if (projectError) {
-      // Fallback attempt with supabaseAdmin if JWT token RLS fails
-      const adminFallback = await supabaseAdmin
+    try {
+      const { data: project, error: projectError } = await client
         .from("projects")
         .insert({
           user_id: userId,
@@ -69,25 +176,74 @@ export class ProjectsService {
         .select()
         .single();
 
-      if (adminFallback.error) {
-        // In-memory project fallback if DB RLS fails
-        return {
-          id: `proj-${Date.now()}`,
-          user_id: userId,
-          name,
-          description: description || "",
-          files: []
-        };
+      if (!projectError && project) {
+        createdProject = project;
       }
-      return adminFallback.data;
+    } catch (e) {}
+
+    if (!createdProject) {
+      // Fallback attempt with supabaseAdmin
+      try {
+        const adminFallback = await supabaseAdmin
+          .from("projects")
+          .insert({
+            user_id: userId,
+            name,
+            description: description || "",
+          })
+          .select()
+          .single();
+
+        if (!adminFallback.error && adminFallback.data) {
+          createdProject = adminFallback.data;
+        }
+      } catch (e) {}
     }
 
-    return project;
+    if (!createdProject) {
+      createdProject = {
+        id: `proj-${Date.now()}`,
+        user_id: userId,
+        name,
+        description: description || "",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
+
+    // Initialize fresh default files tailored to this project
+    const defaultFiles = this.getDefaultFiles(createdProject.id, createdProject.name);
+
+    // Save to in-memory store
+    this.memoryProjects.set(createdProject.id, createdProject);
+    this.memoryProjectFiles.set(createdProject.id, defaultFiles);
+
+    // Persist default files in DB
+    try {
+      await client.from("project_files").upsert(defaultFiles, { onConflict: "project_id,path" });
+    } catch (e) {
+      try {
+        await supabaseAdmin.from("project_files").upsert(defaultFiles, { onConflict: "project_id,path" });
+      } catch (err) {}
+    }
+
+    // Initialize clean disk workspace
+    try {
+      await RuntimeManager.syncWorkspace(createdProject.id, defaultFiles);
+    } catch (e) {}
+
+    return {
+      ...createdProject,
+      files: defaultFiles,
+    };
   }
 
   // Get all projects owned by a user
   static async getUserProjects(userId: string, token: string) {
     const client = this.getClient(token);
+    const projectsMap = new Map<string, any>();
+
+    // 1. Fetch from database
     try {
       const { data, error } = await client
         .from("projects")
@@ -95,26 +251,44 @@ export class ProjectsService {
         .eq("user_id", userId)
         .order("updated_at", { ascending: false });
 
-      if (!error && data) return data;
+      if (!error && data) {
+        data.forEach((p) => projectsMap.set(p.id, p));
+      }
+    } catch (e) {}
 
-      const adminFallback = await supabaseAdmin
-        .from("projects")
-        .select("*")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false });
-      return adminFallback.data || [];
-    } catch (e) {
-      return [];
+    if (projectsMap.size === 0) {
+      try {
+        const adminRes = await supabaseAdmin
+          .from("projects")
+          .select("*")
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: false });
+
+        if (adminRes.data) {
+          adminRes.data.forEach((p) => projectsMap.set(p.id, p));
+        }
+      } catch (e) {}
     }
+
+    // 2. Merge in-memory projects for this user
+    for (const [id, proj] of this.memoryProjects.entries()) {
+      if (proj.user_id === userId) {
+        if (!projectsMap.has(id)) {
+          projectsMap.set(id, proj);
+        }
+      }
+    }
+
+    return Array.from(projectsMap.values());
   }
 
-  // Get a single project by ID with reliable in-memory fallback
+  // Get a single project by ID with isolated files
   static async getProjectById(userId: string, token: string, projectId: string) {
     const client = this.getClient(token);
     let project: any = null;
 
     try {
-      let { data, error } = await client
+      const { data, error } = await client
         .from("projects")
         .select("*")
         .eq("id", projectId)
@@ -135,18 +309,24 @@ export class ProjectsService {
       } catch (e) {}
     }
 
+    if (!project && this.memoryProjects.has(projectId)) {
+      project = this.memoryProjects.get(projectId);
+    }
+
     if (!project) {
       project = {
         id: projectId,
         user_id: userId || "default-user",
-        name: "Generated Web Application",
-        description: "AI Generated Web Application",
+        name: "New Project",
+        description: "",
       };
     }
 
-    let files: any[] = [];
+    let files: ProjectFile[] = [];
+
+    // 1. Check Supabase project_files
     try {
-      let { data: fileData } = await client
+      const { data: fileData } = await client
         .from("project_files")
         .select("*")
         .eq("project_id", projectId)
@@ -165,193 +345,62 @@ export class ProjectsService {
       } catch (e) {}
     }
 
+    // 2. Check in-memory files cache
+    if (files.length === 0 && this.memoryProjectFiles.has(projectId)) {
+      const cached = this.memoryProjectFiles.get(projectId);
+      if (cached && cached.length > 0) {
+        files = cached;
+      }
+    }
+
+    // 3. Check disk workspace files
     if (files.length === 0) {
-      const defaultFiles = [
-        {
-          project_id: projectId,
-          path: "components/Navbar.tsx",
-          content: `import React, { useState } from 'react';
-import { Sparkles, Menu, X } from 'lucide-react';
+      try {
+        const wsDir = RuntimeManager.getWorkspacePath(projectId);
+        if (fs.existsSync(wsDir)) {
+          const diskFiles: ProjectFile[] = [];
+          const readDirRecursive = (currentDir: string, relativeDir: string = "") => {
+            const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+            for (const entry of entries) {
+              if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+              const fullPath = path.join(currentDir, entry.name);
+              const relPath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+              if (entry.isDirectory()) {
+                readDirRecursive(fullPath, relPath);
+              } else if (entry.isFile()) {
+                const content = fs.readFileSync(fullPath, "utf-8");
+                diskFiles.push({
+                  project_id: projectId,
+                  path: relPath,
+                  content,
+                });
+              }
+            }
+          };
+          readDirRecursive(wsDir);
+          if (diskFiles.length > 0) {
+            files = diskFiles;
+          }
+        }
+      } catch (e) {}
+    }
 
-export const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
+    // 4. If completely empty, generate fresh new default code for this project
+    if (files.length === 0) {
+      const defaultFiles = this.getDefaultFiles(projectId, project.name);
+      files = defaultFiles;
 
-  return (
-    <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="p-2 bg-indigo-600 rounded-xl text-white">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <span className="font-bold text-xl text-white tracking-tight">ApexVision</span>
-        </div>
-
-        <nav className="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
-          <a href="#hero" className="hover:text-indigo-400 transition-colors">Home</a>
-          <a href="#about" className="hover:text-indigo-400 transition-colors">About</a>
-          <a href="#services" className="hover:text-indigo-400 transition-colors">Services</a>
-          <a href="#contact" className="hover:text-indigo-400 transition-colors">Contact</a>
-        </nav>
-
-        <div className="hidden md:flex items-center space-x-4">
-          <button className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-600/30">
-            Get Started
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "components/Hero.tsx",
-          content: `import React from 'react';
-import { ArrowRight, Zap, Shield } from 'lucide-react';
-
-export const Hero = () => {
-  return (
-    <section id="hero" className="relative py-24 px-6 overflow-hidden bg-slate-950">
-      <div className="max-w-5xl mx-auto text-center relative z-10">
-        <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tight leading-tight mb-6">
-          Build Intelligence into Every <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Web Experience</span>
-        </h1>
-        <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Supercharge your digital workflow with autonomous agent architectures.
-        </p>
-        <div className="flex items-center justify-center gap-4">
-          <a href="#services" className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all shadow-xl shadow-indigo-600/30">
-            Explore Services
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "components/About.tsx",
-          content: `import React from 'react';
-import { CheckCircle } from 'lucide-react';
-
-export const About = () => {
-  return (
-    <section id="about" className="py-20 px-6 bg-slate-900 border-t border-slate-800">
-      <div className="max-w-5xl mx-auto text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">About Our Platform</h2>
-        <p className="text-slate-400 max-w-2xl mx-auto leading-relaxed">
-          We build state-of-the-art web generation engines that bridge creative vision and production code.
-        </p>
-      </div>
-    </section>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "components/Services.tsx",
-          content: `import React from 'react';
-import { Cpu, Code2, Globe } from 'lucide-react';
-
-export const Services = () => {
-  return (
-    <section id="services" className="py-20 px-6 bg-slate-950 border-t border-slate-800">
-      <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-8 text-center">
-        <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl">
-          <Cpu className="w-8 h-8 text-indigo-400 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">AI Agent Engine</h3>
-          <p className="text-slate-400 text-sm">Autonomous planning and code refactoring.</p>
-        </div>
-        <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl">
-          <Code2 className="w-8 h-8 text-indigo-400 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">Modular Architecture</h3>
-          <p className="text-slate-400 text-sm">Clean React component structure.</p>
-        </div>
-        <div className="p-6 bg-slate-900 border border-slate-800 rounded-2xl">
-          <Globe className="w-8 h-8 text-indigo-400 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">Live Preview Engine</h3>
-          <p className="text-slate-400 text-sm">Instant client-side JSX transpilation.</p>
-        </div>
-      </div>
-    </section>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "components/CTA.tsx",
-          content: `import React from 'react';
-import { Mail } from 'lucide-react';
-
-export const CTA = () => {
-  return (
-    <section id="contact" className="py-20 px-6 bg-slate-900 border-t border-slate-800 text-center">
-      <h2 className="text-3xl font-bold text-white mb-4">Ready to Build Your Project?</h2>
-      <p className="text-slate-300 max-w-md mx-auto mb-6">Describe your ideas to your AI developer agent to generate full applications.</p>
-    </section>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "components/Footer.tsx",
-          content: `import React from 'react';
-
-export const Footer = () => {
-  return (
-    <footer className="bg-slate-950 border-t border-slate-800 py-8 text-center text-xs text-slate-500">
-      © {new Date().getFullYear()} AI Web App Builder. All rights reserved.
-    </footer>
-  );
-};`,
-        },
-        {
-          project_id: projectId,
-          path: "App.tsx",
-          content: `import React from 'react';
-import { Navbar } from './components/Navbar';
-import { Hero } from './components/Hero';
-import { About } from './components/About';
-import { Services } from './components/Services';
-import { CTA } from './components/CTA';
-import { Footer } from './components/Footer';
-
-export default function App() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <Navbar />
-      <Hero />
-      <About />
-      <Services />
-      <CTA />
-      <Footer />
-    </div>
-  );
-}`,
-        },
-        {
-          project_id: projectId,
-          path: "index.html",
-          content: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Modern Web Application</title>
-  </head>
-  <body class="bg-slate-950 text-slate-100 font-sans">
-    <div id="root"></div>
-  </body>
-</html>`,
-        },
-      ];
-
+      // Cache and persist
+      this.memoryProjectFiles.set(projectId, defaultFiles);
       try {
         await supabaseAdmin.from("project_files").upsert(defaultFiles, { onConflict: "project_id,path" });
       } catch (e) {}
-
-      files = defaultFiles as any;
+      try {
+        await RuntimeManager.syncWorkspace(projectId, defaultFiles);
+      } catch (e) {}
+    } else {
+      // Sync memory cache
+      this.memoryProjectFiles.set(projectId, files);
     }
 
     return {
@@ -360,20 +409,49 @@ export default function App() {
     };
   }
 
-  // Save or update a single project file with safe error swallowing
-  static async updateProjectFile(userId: string, token: string, projectId: string, path: string, content: string) {
-    if (!path || path.includes("..")) {
+  // Save or update a single project file safely
+  static async updateProjectFile(userId: string, token: string, projectId: string, filePath: string, content: string) {
+    if (!filePath || filePath.includes("..")) {
       throw new Error("Invalid file path: path traversal detected");
     }
-    const client = this.getClient(token);
 
+    // 1. Update in-memory files cache
+    const currentFiles = this.memoryProjectFiles.get(projectId) || [];
+    const existingIndex = currentFiles.findIndex((f) => f.path === filePath);
+    const fileRecord: ProjectFile = {
+      project_id: projectId,
+      path: filePath,
+      content,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      currentFiles[existingIndex] = fileRecord;
+    } else {
+      currentFiles.push(fileRecord);
+    }
+    this.memoryProjectFiles.set(projectId, currentFiles);
+
+    // 2. Update physical disk workspace
+    try {
+      const wsDir = RuntimeManager.getWorkspacePath(projectId);
+      const absPath = path.join(wsDir, filePath);
+      const parentDir = path.dirname(absPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.writeFileSync(absPath, content, "utf-8");
+    } catch (e) {}
+
+    // 3. Persist to Supabase
+    const client = this.getClient(token);
     try {
       const { data } = await client
         .from("project_files")
         .upsert(
           {
             project_id: projectId,
-            path,
+            path: filePath,
             content,
             updated_at: new Date().toISOString(),
           },
@@ -391,7 +469,7 @@ export default function App() {
         .upsert(
           {
             project_id: projectId,
-            path,
+            path: filePath,
             content,
             updated_at: new Date().toISOString(),
           },
@@ -402,27 +480,39 @@ export default function App() {
       if (adminFallback.data) return adminFallback.data;
     } catch (e) {}
 
-    return {
-      project_id: projectId,
-      path,
-      content,
-      updated_at: new Date().toISOString(),
-    };
+    return fileRecord;
   }
 
   // Delete a project file safely
-  static async deleteProjectFile(userId: string, token: string, projectId: string, path: string) {
-    if (!path || path.includes("..")) {
+  static async deleteProjectFile(userId: string, token: string, projectId: string, filePath: string) {
+    if (!filePath || filePath.includes("..")) {
       throw new Error("Invalid file path: path traversal detected");
     }
-    const client = this.getClient(token);
 
+    // 1. Remove from in-memory files cache
+    const currentFiles = this.memoryProjectFiles.get(projectId) || [];
+    this.memoryProjectFiles.set(
+      projectId,
+      currentFiles.filter((f) => f.path !== filePath)
+    );
+
+    // 2. Remove from physical disk workspace
     try {
-      await client.from("project_files").delete().eq("project_id", projectId).eq("path", path);
+      const wsDir = RuntimeManager.getWorkspacePath(projectId);
+      const absPath = path.join(wsDir, filePath);
+      if (fs.existsSync(absPath)) {
+        fs.unlinkSync(absPath);
+      }
+    } catch (e) {}
+
+    // 3. Delete from Supabase
+    const client = this.getClient(token);
+    try {
+      await client.from("project_files").delete().eq("project_id", projectId).eq("path", filePath);
     } catch (e) {}
 
     try {
-      await supabaseAdmin.from("project_files").delete().eq("project_id", projectId).eq("path", path);
+      await supabaseAdmin.from("project_files").delete().eq("project_id", projectId).eq("path", filePath);
     } catch (e) {}
 
     return { success: true };
@@ -430,6 +520,9 @@ export default function App() {
 
   // Delete a project by ID
   static async deleteProject(userId: string, token: string, projectId: string) {
+    this.memoryProjects.delete(projectId);
+    this.memoryProjectFiles.delete(projectId);
+
     const client = this.getClient(token);
     try {
       await client.from("projects").delete().eq("id", projectId);
