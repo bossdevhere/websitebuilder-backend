@@ -125,4 +125,28 @@ export class ProjectsController {
       res.status(500).json({ error: error.message || "Failed to cleanup demo workspace" });
     }
   }
+
+  // POST /api/projects/claim-demo
+  static async claimDemoProject(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const targetUserId = req.user?.id;
+      const targetToken = getToken(req);
+      const { demoToken } = req.body;
+
+      if (!targetUserId || !targetToken) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (!demoToken) {
+        res.status(400).json({ error: "Missing demoToken in request body" });
+        return;
+      }
+
+      const result = await ProjectsService.claimDemoProject(targetUserId, targetToken, demoToken);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to claim demo project" });
+    }
+  }
 }

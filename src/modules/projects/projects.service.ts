@@ -562,4 +562,105 @@ export default function App() {
     }
     return { success: true, count: userProjects.length };
   }
+
+  // Claim/transfer demo projects into a registered user's account as "Demo Project 1", "Demo Project 2", etc.
+  static async claimDemoProject(targetUserId: string, targetToken: string, demoToken: string) {
+    if (!demoToken || !targetUserId) {
+      throw new Error("Missing target user or demo token");
+    }
+
+    // Determine the demo user ID from the token
+    const demoSuffix = demoToken.startsWith("demo-token-") ? demoToken.slice(11) : "guest";
+    const demoUserId = `demo-user-${demoSuffix}`;
+
+    // Get all projects created during this demo session
+    const demoProjects = await this.getUserProjects(demoUserId, demoToken);
+    if (!demoProjects || demoProjects.length === 0) {
+      return { success: true, message: "No demo projects found to transfer", claimed: [] };
+    }
+
+    // Fetch registered user's existing projects to determine sequential numbering:
+    // "Demo Project 1", "Demo Project 2", etc.
+    const targetProjects = await this.getUserProjects(targetUserId, targetToken);
+
+    let nextNum = 1;
+    targetProjects.forEach((p) => {
+      const match = (p.name || "").trim().match(/^demo project\s*(\d+)$/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (val >= nextNum) {
+          nextNum = val + 1;
+        }
+      }
+    });
+
+    const claimedProjects: any[] = [];
+
+    for (const demoProj of demoProjects) {
+      const newProjectName = `Demo Project ${nextNum}`;
+      nextNum++;
+
+      // 1. Get full files from the demo project
+      const fullProj = await this.getProjectById(demoUserId, demoToken, demoProj.id);
+      const projectFiles: ProjectFile[] = fullProj.files || [];
+
+      // 2. Transfer ownership in-memory
+      if (this.memoryProjects.has(demoProj.id)) {
+        const memProj = this.memoryProjects.get(demoProj.id);
+        memProj.user_id = targetUserId;
+        memProj.name = newProjectName;
+        memProj.updated_at = new Date().toISOString();
+        this.memoryProjects.set(demoProj.id, memProj);
+      } else {
+        this.memoryProjects.set(demoProj.id, {
+          ...demoProj,
+          user_id: targetUserId,
+          name: newProjectName,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      if (projectFiles.length > 0) {
+        this.memoryProjectFiles.set(demoProj.id, projectFiles);
+      }
+
+      // 3. Upsert into Supabase DB under targetUserId
+      try {
+        await supabaseAdmin.from("projects").upsert({
+          id: demoProj.id,
+          user_id: targetUserId,
+          name: newProjectName,
+          description: demoProj.description || "Transferred from demo workspace.",
+          updated_at: new Date().toISOString(),
+        });
+
+        if (projectFiles.length > 0) {
+          await supabaseAdmin
+            .from("project_files")
+            .upsert(projectFiles, { onConflict: "project_id,path" });
+        }
+      } catch (dbErr) {
+        console.warn("[CLAIM_DEMO] Supabase upsert fallback to in-memory:", dbErr);
+      }
+
+      // 4. Ensure disk workspace exists and is synchronized
+      try {
+        await RuntimeManager.syncWorkspace(demoProj.id, projectFiles);
+      } catch (wsErr) {}
+
+      claimedProjects.push({
+        id: demoProj.id,
+        user_id: targetUserId,
+        name: newProjectName,
+        description: demoProj.description || "Transferred from demo workspace.",
+        files: projectFiles,
+      });
+    }
+
+    return {
+      success: true,
+      message: `Transferred ${claimedProjects.length} demo project(s) to your registered account.`,
+      claimed: claimedProjects,
+    };
+  }
 }
