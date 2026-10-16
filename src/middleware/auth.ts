@@ -1,9 +1,8 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { supabase } from "../config/supabase.js";
+import { AuthenticatedRequest } from "../types/index.js";
 
-export interface AuthenticatedRequest extends Request {
-  user?: any;
-}
+export { AuthenticatedRequest };
 
 export async function authenticateToken(
   req: AuthenticatedRequest,
