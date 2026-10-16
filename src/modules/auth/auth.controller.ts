@@ -55,4 +55,35 @@ export class AuthController {
       res.status(500).json({ error: "Logout failed" });
     }
   }
+
+  static async demo(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const demoId = "demo-user-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      const demoToken = "demo-token-" + demoId.replace("demo-user-", "");
+
+      const demoUser = {
+        id: demoId,
+        email: "demo@aiwebstudio.dev",
+        user_metadata: { name: "Demo User", is_demo: true },
+        is_demo: true,
+        created_at: new Date().toISOString(),
+      };
+
+      const demoSession = {
+        access_token: demoToken,
+        refresh_token: "demo-refresh-token",
+        token_type: "bearer",
+        expires_in: 86400,
+        user: demoUser,
+      };
+
+      res.status(200).json({
+        message: "Demo session initiated",
+        user: demoUser,
+        session: demoSession,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to create demo session" });
+    }
+  }
 }

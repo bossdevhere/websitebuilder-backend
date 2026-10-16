@@ -111,4 +111,18 @@ export class ProjectsController {
       res.status(400).json({ error: error.message || "Failed to delete file" });
     }
   }
+
+  // POST /api/projects/demo/cleanup
+  static async cleanupDemoProjects(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const token = getToken(req);
+      if (userId) {
+        await ProjectsService.cleanupUserProjects(userId, token);
+      }
+      res.status(200).json({ message: "Demo workspace cleaned up successfully" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to cleanup demo workspace" });
+    }
+  }
 }

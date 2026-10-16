@@ -9,6 +9,7 @@ router.use(authenticateToken);
 
 router.post("/", ProjectsController.createProject);
 router.get("/", ProjectsController.getUserProjects);
+router.post("/demo/cleanup", ProjectsController.cleanupDemoProjects);
 router.get("/:id", ProjectsController.getProjectById);
 router.delete("/:id", ProjectsController.deleteProject);
 router.put("/:id/files", ProjectsController.updateProjectFile);

@@ -162,6 +162,17 @@ export default function App() {
 
   // Create a new project with fresh default starter files
   static async createProject(userId: string, token: string, name: string, description?: string) {
+    // Demo accounts are limited to exactly 1 project
+    const isDemo = userId.startsWith("demo-user") || userId === "demo-guest-user";
+    if (isDemo) {
+      const existing = await this.getUserProjects(userId, token);
+      if (existing && existing.length >= 1) {
+        throw new Error(
+          "Demo accounts are limited to 1 active project at a time. Sign up or log in to create unlimited projects!"
+        );
+      }
+    }
+
     const client = this.getClient(token);
     let createdProject: any = null;
 
@@ -541,5 +552,14 @@ export default function App() {
     } catch (e) {}
 
     return { success: true };
+  }
+
+  // Cleanup all projects for a user (used when demo user exits session)
+  static async cleanupUserProjects(userId: string, token: string) {
+    const userProjects = await this.getUserProjects(userId, token);
+    for (const p of userProjects) {
+      await this.deleteProject(userId, token, p.id);
+    }
+    return { success: true, count: userProjects.length };
   }
 }
