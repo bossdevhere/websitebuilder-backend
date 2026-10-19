@@ -285,6 +285,15 @@ NAVIGATION & SECTION ANCHORS:
   onClick={(e) => { e.preventDefault(); document.getElementById('section-id')?.scrollIntoView({ behavior: 'smooth' }); }}
 - Mobile hamburger menu must toggle open/closed properly with React state.
 
+RESPONSIVE LAYOUT & ZERO HORIZONTAL OVERFLOW (CRITICAL):
+- The website MUST adjust gracefully to fit the available preview space without requiring horizontal scrolling.
+- Containers MUST use 'w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'.
+- NEVER use fixed pixel widths on outer containers or sections (NEVER 'w-[1200px]', 'w-[900px]', or 'min-w-[800px]').
+- NEVER use 'w-screen' (100vw causes horizontal scrollbars with vertical scroll). ALWAYS use 'w-full'.
+- Decorative Background Blurs: Whenever using absolute decorative glow spheres or radial blurs (e.g. 'absolute -right-20 top-20 w-96 h-96 blur-3xl ...'), the parent section MUST have 'relative overflow-hidden' so decorative circles never stick out past the right edge of the screen!
+- Responsive Grids: Always use mobile-first breakpoints: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6' or 'flex flex-col sm:flex-row'.
+- Navbar: Use 'hidden md:flex items-center gap-6' for nav links with a responsive mobile hamburger toggle so links never overflow to the right.
+
 REACT CODE INTEGRITY RULES:
 1. MANDATORY App.tsx: App.tsx is the ROOT component mounted in the live preview. YOU MUST ALWAYS GENERATE AND INCLUDE "App.tsx" in the "files" object. App.tsx must import all modular components (e.g. Navbar, Hero, About, Projects, Contact, Footer) and render them in order.
 2. Every link in Navbar MUST have a matching section rendered in App.tsx with matching id attributes (id="about", id="skills", id="experience", id="projects", id="contact") and scroll-mt-24. Never generate dead anchor links!

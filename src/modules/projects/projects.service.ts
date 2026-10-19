@@ -74,7 +74,7 @@ export default function App() {
   }, []);
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-300">
+    <div ref={containerRef} className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden w-full max-w-full selection:bg-indigo-500/30 selection:text-indigo-300">
       {/* Top Header */}
       <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl px-6 py-4 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-3">
@@ -163,7 +163,7 @@ export default function App() {
         project_id: projectId,
         path: "index.html",
         content: `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="overflow-x-hidden scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -172,7 +172,7 @@ export default function App() {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
   </head>
-  <body class="bg-slate-950 text-slate-100 font-sans">
+  <body class="bg-slate-950 text-slate-100 font-sans overflow-x-hidden w-full max-w-full">
     <div id="root"></div>
   </body>
 </html>`,
