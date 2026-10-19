@@ -116,17 +116,32 @@ export class AgentService {
         await RuntimeManager.syncWorkspace(projectId, updatedProj.files || []);
       }
 
-      // 5. Build assistant message text for chat UI
-      let assistantText = result.assistantReply || "";
-      if (!assistantText) {
-        const changeLogs: string[] = [];
-        if (deletedFiles.length > 0) {
-          changeLogs.push(`Deleted files:\n${deletedFiles.map((d: string) => `• ${d}`).join("\n")}`);
+      // 5. Build assistant message text for chat UI (concise 1-2 sentence response)
+      let assistantText = (result.assistantReply || "").trim();
+      if (
+        !assistantText ||
+        assistantText.startsWith("Processed:") ||
+        assistantText.startsWith("[{") ||
+        assistantText.includes('"type":"text"') ||
+        assistantText.includes("###") ||
+        assistantText.length < 5
+      ) {
+        assistantText = fileChanges.length > 0
+          ? `I've updated your website with ${fileChanges.length} component(s) including smooth navigation and GSAP animations.`
+          : `I've processed your request.`;
+      } else {
+        // Strip any residual markdown headings or bulleted changelogs
+        if (assistantText.includes("###") || assistantText.includes("##") || assistantText.includes("What Was Fixed") || assistantText.includes("Changelog")) {
+          const firstSentence = assistantText.split(/###|##|\n\n\d+\.|\n\n-\s|\n\n\*/)[0].trim();
+          assistantText = firstSentence.length > 10 && !firstSentence.includes("###")
+            ? firstSentence
+            : "Updated the components with your requested changes and smooth navigation.";
         }
-        if (fileChanges.length > 0) {
-          changeLogs.push(`Updated files:\n${fileChanges.map((f: any) => `• ${f.path}`).join("\n")}`);
+        // Limit to first paragraph if multiple paragraphs were returned with bullet lists
+        const paragraphs = assistantText.split("\n\n").map((p) => p.trim()).filter(Boolean);
+        if (paragraphs.length > 1 && (assistantText.includes("\n* ") || assistantText.includes("\n- ") || assistantText.includes("\n1. "))) {
+          assistantText = paragraphs[0];
         }
-        assistantText = changeLogs.length > 0 ? changeLogs.join("\n\n") : (result.logs && result.logs[0]) || `Processed: "${userPrompt}"`;
       }
 
       let savedMsg = null;

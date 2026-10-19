@@ -37,6 +37,7 @@ export function getLLMClient(): BaseChatModel {
       return new ChatAnthropic({
         modelName: config.modelName,
         temperature: config.temperature,
+        maxTokens: 8192,
         apiKey,
       });
     }
@@ -46,41 +47,30 @@ export function getLLMClient(): BaseChatModel {
       if (!apiKey) throw new Error("GEMINI_API_KEY is not set in environment");
 
       const primary = new ChatGoogleGenerativeAI({
-        model: config.modelName || "gemini-3.5-flash",
+        model: config.modelName || "gemini-3.8-flash",
         temperature: config.temperature,
         maxRetries: 2,
+        maxOutputTokens: 32768,
         apiKey,
       });
 
       const fallback1 = new ChatGoogleGenerativeAI({
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-3.8-flash",
         temperature: config.temperature,
         maxRetries: 2,
+        maxOutputTokens: 32768,
         apiKey,
       });
 
       const fallback2 = new ChatGoogleGenerativeAI({
-        model: "gemini-3.8-flash",
+        model: "gemini-3.1-flash-lite",
         temperature: config.temperature,
         maxRetries: 2,
+        maxOutputTokens: 32768,
         apiKey,
       });
 
-      const fallback3 = new ChatGoogleGenerativeAI({
-        model: "gemini-2.0-flash",
-        temperature: config.temperature,
-        maxRetries: 2,
-        apiKey,
-      });
-
-      const fallback4 = new ChatGoogleGenerativeAI({
-        model: "gemini-1.5-flash",
-        temperature: config.temperature,
-        maxRetries: 2,
-        apiKey,
-      });
-
-      return primary.withFallbacks([fallback1, fallback2, fallback3, fallback4]) as unknown as BaseChatModel;
+      return primary.withFallbacks([fallback1, fallback2]) as unknown as BaseChatModel;
     }
 
     case "ollama": {
@@ -98,6 +88,7 @@ export function getLLMClient(): BaseChatModel {
       return new ChatOpenAI({
         modelName: config.modelName,
         temperature: config.temperature,
+        maxTokens: 8192,
         openAIApiKey: apiKey,
       });
     }
